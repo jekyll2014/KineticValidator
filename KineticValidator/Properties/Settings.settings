@@ -1,0 +1,84 @@
+﻿<?xml version='1.0' encoding='utf-8'?>
+<SettingsFile xmlns="http://schemas.microsoft.com/VisualStudio/2004/01/settings" CurrentProfile="(Default)" GeneratedClassNamespace="KineticValidator.Properties" GeneratedClassName="Settings">
+  <Profiles />
+  <Settings>
+    <Setting Name="AlwaysOnTop" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">False</Value>
+    </Setting>
+    <Setting Name="LastProjectFolder" Type="System.String" Scope="User">
+      <Value Profile="(Default)" />
+    </Setting>
+    <Setting Name="SkipSchemaErrors" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">True</Value>
+    </Setting>
+    <Setting Name="ReformatJson" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">False</Value>
+    </Setting>
+    <Setting Name="SystemMacros" Type="System.String" Scope="User">
+      <Value Profile="(Default)">%value%;%currentDataView%;%row%</Value>
+    </Setting>
+    <Setting Name="SystemDataViews" Type="System.String" Scope="User">
+      <Value Profile="(Default)">Constant;CallContextBpmData;CallContextClientData;actionResult;searchResult;sysLicensedModules;sysTools;sysGlobalVariable;sysPages;sysTabs;sysVariable;sysTreeNode;sysDragRows;sysPublishedData;strings</Value>
+    </Setting>
+    <Setting Name="InitialProjectFiles" Type="System.String" Scope="User">
+      <Value Profile="(Default)">dataviews.jsonc;events.jsonc;layout.jsonc;rules.jsonc;tools.jsonc;strings.jsonc;patch.jsonc</Value>
+    </Setting>
+    <Setting Name="IgnoreSchemaErrors" Type="System.String" Scope="User">
+      <Value Profile="(Default)">ArrayItemNotValid;PropertyRequired;NoAdditionalPropertiesAllowed</Value>
+    </Setting>
+    <Setting Name="MainWindowPositionX" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">0</Value>
+    </Setting>
+    <Setting Name="MainWindowPositionY" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">0</Value>
+    </Setting>
+    <Setting Name="MainWindowWidth" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">0</Value>
+    </Setting>
+    <Setting Name="MainWindowHeight" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">0</Value>
+    </Setting>
+    <Setting Name="Editor1PositionX" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">0</Value>
+    </Setting>
+    <Setting Name="Editor1PositionY" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">0</Value>
+    </Setting>
+    <Setting Name="Editor1Width" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">0</Value>
+    </Setting>
+    <Setting Name="Editor1Height" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">0</Value>
+    </Setting>
+    <Setting Name="Editor2PositionX" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">0</Value>
+    </Setting>
+    <Setting Name="Editor2PositionY" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">0</Value>
+    </Setting>
+    <Setting Name="Editor2Width" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">0</Value>
+    </Setting>
+    <Setting Name="Editor2Height" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">0</Value>
+    </Setting>
+    <Setting Name="IgnoreHttpsError" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">True</Value>
+    </Setting>
+    <Setting Name="EnabledValidators" Type="System.String" Scope="User">
+      <Value Profile="(Default)">SchemaValidation;RedundantFiles;ValidateFileChars2;DuplicateIds;EmptyPatchNames;RedundantPatches;CallNonExistingPatches;OverridingPatches;PatchAllFields;EmptyStringNames;EmptyStringValues;RedundantStrings;CallNonExistingStrings;OverridingStrings;EmptyEventNames;EmptyEvents;OverridingEvents;RedundantEvents;CallNonExistingEvents;EmptyDataViewNames;RedundantDataViews;CallNonExistingDataViews;OverridingDataViews;EmptyRuleNames;OverridingRules;EmptyToolNames;OverridingTools;MissingForms;MissingSearches;JsCode;JsDataViewCount;IncorrectLayoutIds</Value>
+    </Setting>
+    <Setting Name="ShowPreview" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">True</Value>
+    </Setting>
+    <Setting Name="MessageColumnWidth" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">100</Value>
+    </Setting>
+    <Setting Name="SaveTmpFiles" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">True</Value>
+    </Setting>
+    <Setting Name="SaveReport" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">True</Value>
+    </Setting>
+  </Settings>
+</SettingsFile>
