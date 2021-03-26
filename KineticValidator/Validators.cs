@@ -39,7 +39,8 @@ namespace KineticValidator
                 if (file.IndexOf(_projectPath + "\\views\\", StringComparison.OrdinalIgnoreCase) >= 0)
                     continue;
 
-                if (!_processedFilesList.ContainsKey(file))
+                if (!_processedFilesList.ContainsKey(file)
+                    && !IsShared(file))
                 {
                     var report = new ReportItem
                     {
@@ -178,7 +179,7 @@ namespace KineticValidator
 
         private void EmptyStringNames()
         {
-            var stringsList = _jsonPropertiesCollection
+            var emptyStringsList = _jsonPropertiesCollection
                 .Where(n =>
                     !n.Shared
                     && n.ItemType == JsonItemType.Property
@@ -186,7 +187,7 @@ namespace KineticValidator
                     && n.Parent == "strings"
                     && string.IsNullOrEmpty(n.Name));
 
-            foreach (var stringResource in stringsList)
+            foreach (var stringResource in emptyStringsList)
             {
                 var report = new ReportItem
                 {
@@ -206,7 +207,7 @@ namespace KineticValidator
 
         private void EmptyStringValues()
         {
-            var stringsList = _jsonPropertiesCollection
+            var emptyStringsList = _jsonPropertiesCollection
                 .Where(n =>
                     !n.Shared
                     && n.ItemType == JsonItemType.Property
@@ -214,7 +215,7 @@ namespace KineticValidator
                     && n.Parent == "strings"
                     && string.IsNullOrEmpty(n.Value));
 
-            foreach (var stringResource in stringsList)
+            foreach (var stringResource in emptyStringsList)
             {
                 var report = new ReportItem
                 {
@@ -358,7 +359,8 @@ namespace KineticValidator
                     && n.ItemType == JsonItemType.Property
                     && n.FileType == JsoncContentType.Events
                     && n.Name == "message"
-                    && !n.Value.Contains("{{strings."));
+                    && !n.Value.Contains("{{strings.")
+                    && !IsSingleValueCall(n.Value));
 
             foreach (var field in stringsList)
             {
@@ -429,7 +431,7 @@ namespace KineticValidator
 
         private void EmptyEventNames()
         {
-            var idProjectList = _jsonPropertiesCollection
+            var emptyIdsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
                     && n.FileType == JsoncContentType.Events
@@ -437,7 +439,7 @@ namespace KineticValidator
                     && n.Parent == "events"
                     && string.IsNullOrEmpty(n.Value));
 
-            foreach (var id in idProjectList)
+            foreach (var id in emptyIdsList)
             {
                 var report = new ReportItem
                 {
@@ -457,7 +459,7 @@ namespace KineticValidator
 
         private void EmptyEvents()
         {
-            var idProjectList = _jsonPropertiesCollection
+            var emptyEventsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
                     && n.FileType == JsoncContentType.Events
@@ -466,7 +468,7 @@ namespace KineticValidator
                     && !n.Shared
                     && !string.IsNullOrEmpty(n.Value));
 
-            foreach (var id in idProjectList)
+            foreach (var id in emptyEventsList)
             {
                 var objectMembers = _jsonPropertiesCollection
                     .Where(n =>
@@ -588,7 +590,7 @@ namespace KineticValidator
 
         private void OverridingEvents()
         {
-            var idDuplicateList = _jsonPropertiesCollection
+            var duplicateIdsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
                     && n.FileType == JsoncContentType.Events
@@ -598,9 +600,9 @@ namespace KineticValidator
                 .GroupBy(n => n.Value)
                 .Where(n => n.Count() > 1);
 
-            if (idDuplicateList.Any())
+            if (duplicateIdsList.Any())
             {
-                foreach (var dup in idDuplicateList)
+                foreach (var dup in duplicateIdsList)
                 {
                     // duplicate "id" within project (not including shared imports)
                     var projectDuplicates = dup.Where(n => !n.Shared).ToList();
@@ -673,7 +675,7 @@ namespace KineticValidator
 
         private void EmptyPatchNames()
         {
-            var patchList = _jsonPropertiesCollection
+            var emptPatchList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
                     && n.FileType == JsoncContentType.Patch
@@ -681,7 +683,7 @@ namespace KineticValidator
                     && n.Parent == "patch"
                     && n.Name == "id"
                     && string.IsNullOrEmpty(n.Value));
-            foreach (var patchResource in patchList)
+            foreach (var patchResource in emptPatchList)
             {
                 var report = new ReportItem
                 {
@@ -957,7 +959,7 @@ namespace KineticValidator
 
         private void EmptyDataViewNames()
         {
-            var dataViewList = _jsonPropertiesCollection
+            var emptyDataViewList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
                     && n.FileType == JsoncContentType.DataViews
@@ -966,7 +968,7 @@ namespace KineticValidator
                     && n.Name == "id"
                     && string.IsNullOrEmpty(n.Value));
 
-            foreach (var viewResource in dataViewList)
+            foreach (var viewResource in emptyDataViewList)
             {
                 var report = new ReportItem
                 {
@@ -1209,7 +1211,7 @@ namespace KineticValidator
 
         private void EmptyRuleNames()
         {
-            var duplicateRulesList = _jsonPropertiesCollection
+            var emptyRulesList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
                     && n.FileType == JsoncContentType.Rules
@@ -1217,7 +1219,7 @@ namespace KineticValidator
                     && n.Name == "id"
                     && string.IsNullOrEmpty(n.Value));
 
-            foreach (var dup in duplicateRulesList)
+            foreach (var dup in emptyRulesList)
             {
                 var report = new ReportItem
                 {
@@ -1282,7 +1284,7 @@ namespace KineticValidator
 
         private void EmptyToolNames()
         {
-            var duplicateToolsList = _jsonPropertiesCollection
+            var emptyToolsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
                     && n.FileType == JsoncContentType.Tools
@@ -1290,7 +1292,7 @@ namespace KineticValidator
                     && n.Name == "id"
                     && string.IsNullOrEmpty(n.Value));
 
-            foreach (var dup in duplicateToolsList)
+            foreach (var dup in emptyToolsList)
             {
                 var report = new ReportItem
                 {
@@ -1512,12 +1514,13 @@ namespace KineticValidator
 
         private void JsCode()
         {
-            var duplicateToolsList = _jsonPropertiesCollection
+            var jsPatternsList = _jsonPropertiesCollection
                 .Where(n =>
-                    n.ItemType == JsonItemType.Property
+                    !n.Shared
+                    && n.ItemType == JsonItemType.Property
                     && n.Value.Contains("#_"));
 
-            foreach (var dup in duplicateToolsList)
+            foreach (var dup in jsPatternsList)
             {
                 var report = new ReportItem
                 {
@@ -1537,13 +1540,14 @@ namespace KineticValidator
 
         private void JsDataViewCount()
         {
-            var duplicateToolsList = _jsonPropertiesCollection
+            var jsPatternsList = _jsonPropertiesCollection
                 .Where(n =>
-                    n.ItemType == JsonItemType.Property
+                    !n.Shared
+                    && n.ItemType == JsonItemType.Property
                     && n.Value.Contains("#_trans.dataView(")
                     && n.Value.Contains(").count"));
 
-            foreach (var dup in duplicateToolsList)
+            foreach (var dup in jsPatternsList)
             {
                 var report = new ReportItem
                 {
@@ -1658,6 +1662,122 @@ namespace KineticValidator
                 }
 
                 _reportsCollection.Add(report);
+            }
+        }
+
+        //private void IncorrectDVContitionViewName([CallerMemberName] string methodName = null)
+        private void IncorrectDVContitionViewName()
+        {
+            var dvConditionsList = _jsonPropertiesCollection
+                .Where(n =>
+                    !n.Shared
+                    && n.ItemType == JsonItemType.Property
+                    && n.FileType == JsoncContentType.Events
+                    && n.Name == "type"
+                    && n.Value == "dataview-condition");
+
+            foreach (var item in dvConditionsList)
+            {
+                var dvName = _jsonPropertiesCollection
+                    .Where(n =>
+                        n.FullFileName == item.FullFileName
+                        && n.ItemType == JsonItemType.Property
+                        && n.FileType == JsoncContentType.Events
+                        && n.ParentPath == item.ParentPath + ".param"
+                        && n.Name == "dataview").ToArray();
+
+                var resultDvName = _jsonPropertiesCollection
+                    .Where(n =>
+                        n.FullFileName == item.FullFileName
+                        && n.ItemType == JsonItemType.Property
+                        && n.FileType == JsoncContentType.Events
+                        && n.ParentPath == item.ParentPath + ".param"
+                        && n.Name == "result").ToArray();
+
+                if (dvName.Length != 1 || resultDvName.Length != 1)
+                {
+                    var report = new ReportItem
+                    {
+                        ProjectName = _projectName,
+                        FullFileName = item.FullFileName,
+                        Message = $"Incorrect dataview-condition definition",
+                        FileType = item.FileType.ToString(),
+                        LineId = item.LineId.ToString(),
+                        JsonPath = item.JsonPath,
+                        ValidationType = ValidationTypeEnum.Logic.ToString(),
+                        Severity = ImportanceEnum.Error.ToString(),
+                        Source = "IncorrectDVContitionViewName"
+                    };
+                    _reportsCollection.Add(report);
+                }
+                if (dvName[0].Value == resultDvName[0].Value)
+                {
+                    var report = new ReportItem
+                    {
+                        ProjectName = _projectName,
+                        FullFileName = item.FullFileName,
+                        Message = $"Incorrect dataview-condition definition: \"dataview\" should be different from \"result\"",
+                        FileType = item.FileType.ToString(),
+                        LineId = item.LineId.ToString(),
+                        JsonPath = dvName[0].JsonPath,
+                        ValidationType = ValidationTypeEnum.Logic.ToString(),
+                        Severity = ImportanceEnum.Error.ToString(),
+                        Source = "IncorrectDVContitionViewName"
+                    };
+                    _reportsCollection.Add(report);
+                }
+            }
+        }
+
+        private void IncorrectTabIds()
+        {
+            var tabIdsList = _jsonPropertiesCollection
+                .Where(n =>
+                    !n.Shared
+                    && n.ItemType == JsonItemType.Property
+                    && n.FileType == JsoncContentType.Layout
+                    && !string.IsNullOrEmpty(n.Value)
+                    && n.Name == "tabId").Select(n => n.Value).ToArray();
+
+            var tabStripsList = _jsonPropertiesCollection
+                .Where(n =>
+                    !n.Shared
+                    && n.ItemType == JsonItemType.Property
+                    && n.FileType == JsoncContentType.Layout
+                    && n.Name == "sourceTypeId"
+                    && n.Value == "metafx-tabstrip");
+
+            foreach (var tab in tabStripsList)
+            {
+                var tabsList = _jsonPropertiesCollection
+                    .Where(n =>
+                        !n.Shared
+                        && n.FullFileName == tab.FullFileName
+                        && n.ItemType == JsonItemType.Property
+                        && n.FileType == JsoncContentType.Layout
+                        && n.JsonPath.Contains(tab.ParentPath + ".model.data")
+                        && n.Name == "page"
+                        && !string.IsNullOrEmpty(n.Value));
+
+                foreach (var item in tabsList)
+                {
+                    if (!tabIdsList.Contains(item.Value))
+                    {
+                        var report = new ReportItem
+                        {
+                            ProjectName = _projectName,
+                            FullFileName = item.FullFileName,
+                            Message = $"Inexistent tab link: {item.Value}",
+                            FileType = item.FileType.ToString(),
+                            LineId = item.LineId.ToString(),
+                            JsonPath = item.JsonPath,
+                            ValidationType = ValidationTypeEnum.Logic.ToString(),
+                            Severity = ImportanceEnum.Error.ToString(),
+                            Source = "IncorrectTabIds"
+                        };
+                        _reportsCollection.Add(report);
+                    }
+                }
             }
         }
 

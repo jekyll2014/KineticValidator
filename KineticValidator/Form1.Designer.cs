@@ -249,6 +249,7 @@ namespace KineticValidator
             this.textBox_logText.Location = new System.Drawing.Point(0, 0);
             this.textBox_logText.Multiline = true;
             this.textBox_logText.Name = "textBox_logText";
+            this.textBox_logText.ScrollBars = System.Windows.Forms.ScrollBars.Both;
             this.textBox_logText.Size = new System.Drawing.Size(436, 396);
             this.textBox_logText.TabIndex = 0;
             // 

@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -244,6 +245,9 @@ namespace KineticValidator
                 {"JS #_trans.dataView('DataView').count_#", JsDataViewCount},
                 {"Missing layout id's", MissingLayoutIds},
                 {"Incorrect layout id's", IncorrectLayoutIds},
+                {"Incorrect dataview-condition", IncorrectDVContitionViewName},
+                {"Incorrect tab links", IncorrectTabIds},
+
             };
 
             foreach (var validator in _systemValidatorsList)
@@ -442,6 +446,9 @@ namespace KineticValidator
                 };
                 _reportsCollection.Add(report);
             }
+            var sharedDir = dirList.Where(n => n.EndsWith("\\Shared"));
+            if (sharedDir.Any())
+                dirList.Remove(sharedDir.First());
 
             _schemaList = new Dictionary<string, string>();
             var totalReportsCollection = new List<ReportItem>();
@@ -478,6 +485,7 @@ namespace KineticValidator
             }
 
             SetProject(collectionFoler, false);
+            InitReportsGrid(_isCollectionFolder);
             ProcessReport(totalReportsCollection, _saveReport);
 
             if (!_runFromCmdLine)
@@ -931,7 +939,9 @@ namespace KineticValidator
             foreach (var file in _initialProjectFiles)
             {
                 var fullFileName = _projectPath + "\\" + file;
-                if (!File.Exists(fullFileName) && file != "strings.jsonc")
+                if (!File.Exists(fullFileName)
+                    && file != "strings.jsonc"
+                    && !IsShared(fullFileName))
                 {
                     var report = new ReportItem
                     {
@@ -1072,7 +1082,6 @@ namespace KineticValidator
                         reportLine.FullFileName.Replace(SplitChar.ToString(), Environment.NewLine);
                     _reportTable.Rows.Add(newRow);
                 }
-
             }
 
             if (saveFile)
@@ -1445,7 +1454,7 @@ namespace KineticValidator
 
             var ver = "";
             //var jsonDepth = 0;
-            var shared = IsShared(fullFileName, _projectPath);
+            var shared = IsShared(fullFileName);
             if (jsonObject != null && jsonObject is JToken)
                 ParseJsonObject(
                     jsonObject,
@@ -1905,7 +1914,7 @@ namespace KineticValidator
                         DataPropertyName = col,
                         Name = col,
                         AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells,
-                        SortMode = DataGridViewColumnSortMode.Automatic
+                        SortMode = DataGridViewColumnSortMode.NotSortable // temp. disabled
                     };
                     if (col == ReportColumns.JsonPath.ToString()
                         || col == ReportColumns.Message.ToString())
@@ -2213,9 +2222,9 @@ namespace KineticValidator
             return simplePath.ToString();
         }
 
-        private bool IsShared(string fullFileName, string rootPath)
+        private bool IsShared(string fullFileName)
         {
-            return !fullFileName.Contains(rootPath);
+            return !fullFileName.Contains(_projectPath);
         }
 
         private void Exit()
@@ -2256,7 +2265,7 @@ namespace KineticValidator
                                 if (newPatch.IndexOf(tokenEmbracementChar, 1, newPatch.Length - 2) >= 0)
                                 {
                                     // stack overflow comes on "%%patch%%" processing. Easy way to handle.
-                                    if (newPatch.StartsWith("%%") && newPatch.EndsWith("%%"))
+                                    if (newPatch.StartsWith("%%") && newPatch.EndsWith("%"))
                                         pos1 = pos2 + 1;
                                     else
                                         patchList.AddRange(GetPatchMacros(newPatch));
@@ -2362,6 +2371,12 @@ namespace KineticValidator
 
 
             return valueList;
+        }
+
+        private bool IsSingleValueCall(string field)
+        {
+            Regex regex = new Regex(@"^{+\w+[.]+\w+}$");
+            return regex.Match(field).Success;
         }
 
         private bool TryGetPositionByPathStr(string json, string path, out int startPos, out int endPos)
