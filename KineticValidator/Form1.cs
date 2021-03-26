@@ -26,6 +26,14 @@ namespace KineticValidator
 {
     public partial class MainForm : Form
     {
+        enum FolderType
+        {
+            Unknown,
+            Deployment,
+            Repository,
+            IceRepository,
+        }
+
         // predefined constants
         private readonly List<ValidationErrorKind> _suppressSchemaErrors;
 
@@ -130,12 +138,11 @@ namespace KineticValidator
         private bool _reformatJson;
         private bool _skipSchemaErrors;
         private bool _runFromCmdLine;
-        private bool _isDeploymentFolder;
-        private bool _isIceFolder;
         private bool _saveTmpFiles;
         private bool _saveReport;
         private bool _isCollectionFolder;
         private bool _showPreview;
+        private FolderType _folderType;
 
         private struct WinPosition
         {
@@ -165,6 +172,7 @@ namespace KineticValidator
         private Dictionary<string, string> _patchValues = new Dictionary<string, string>();
         private Dictionary<string, Action> _systemValidatorsList = new Dictionary<string, Action>();
         private Dictionary<string, Action> _validatorsList = new Dictionary<string, Action>();
+        //private Dictionary<string, Func<string,bool>> _validatorsListTmp = new Dictionary<string, Func<string, bool>>();
         private List<string> _checkedValidators = new List<string>();
         private Dictionary<string, List<ParsedProperty>> _parsedFiles = new Dictionary<string, List<ParsedProperty>>();
 
@@ -254,6 +262,13 @@ namespace KineticValidator
             {
                 _validatorsList.Add(validator.Key, validator.Value);
             }
+
+            /*_validatorsListTmp.Add("validator1", IncorrectDVContitionViewNameTmp);
+
+            foreach (var validator in _validatorsListTmp)
+            {
+                var res = validator.Value("");
+            }*/
 
             foreach (var validator in validatorsList)
             {
@@ -388,20 +403,24 @@ namespace KineticValidator
             _processedFilesList = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             _patchValues = new Dictionary<string, string>();
 
-            InitReportsGrid();
 
             if (!_runFromCmdLine)
             {
+                InitReportsGrid();
                 await Task.Run(() =>
                 {
-                    RunValidation(_saveTmpFiles);
-                    ProcessReport(_reportsCollection, _saveReport);
+                    if (RunValidation(_saveTmpFiles))
+                    {
+                        ProcessReport(_reportsCollection, _saveReport, true);
+                    }
                 }).ConfigureAwait(true);
             }
             else
             {
-                RunValidation(_saveTmpFiles);
-                ProcessReport(_reportsCollection, _saveReport);
+                if (RunValidation(_saveTmpFiles))
+                {
+                    ProcessReport(_reportsCollection, _saveReport, false);
+                }
             }
 
             FlushLog();
@@ -467,16 +486,20 @@ namespace KineticValidator
                 {
                     await Task.Run(() =>
                 {
-                    RunValidation(_saveTmpFiles);
-                    ProcessReport(_reportsCollection, _saveReport);
-                    totalReportsCollection.AddRange(_reportsCollection);
+                    if (RunValidation(_saveTmpFiles))
+                    {
+                        ProcessReport(_reportsCollection, _saveReport, false);
+                        totalReportsCollection.AddRange(_reportsCollection);
+                    }
                 }).ConfigureAwait(true);
                 }
                 else
                 {
-                    RunValidation(_saveTmpFiles);
-                    ProcessReport(_reportsCollection, _saveReport);
-                    totalReportsCollection.AddRange(_reportsCollection);
+                    if (RunValidation(_saveTmpFiles))
+                    {
+                        ProcessReport(_reportsCollection, _saveReport, false);
+                        totalReportsCollection.AddRange(_reportsCollection);
+                    }
                 }
                 FlushLog();
 
@@ -486,15 +509,9 @@ namespace KineticValidator
 
             SetProject(collectionFoler, false);
             InitReportsGrid(_isCollectionFolder);
-            ProcessReport(totalReportsCollection, _saveReport);
-
-            if (!_runFromCmdLine)
-            {
-                tabControl1.SelectTab(1);
-            }
-
+            ProcessReport(totalReportsCollection, _saveReport, true);
+            tabControl1.SelectTab(1);
             ActivateUiControls(true);
-
         }
 
         private void CheckBox_ignoreHttpsError_CheckedChanged(object sender, EventArgs e)
@@ -914,18 +931,23 @@ namespace KineticValidator
             Exit();
         }
 
-        private void RunValidation(bool saveFile = true)
+        private bool RunValidation(bool saveFile = true)
         {
-            _isDeploymentFolder = _projectPath.Contains("\\Deployment\\Server\\Apps\\");
-            _isIceFolder = GetShortFileName(_projectPath).StartsWith("Ice");
+            //_isDeploymentFolder = _projectPath.Contains("\\Deployment\\Server\\Apps\\");
+            //_isIceFolder = GetShortFileName(_projectPath).StartsWith("Ice");
             //_isSearch = _projectPath.Contains("\\Shared\\search\\");
 
             if (Directory.Exists(_projectPath + "\\..\\shared\\"))
-                _isDeploymentFolder = true;
+                _folderType = FolderType.Deployment;
             else if (Directory.Exists(_projectPath + "\\..\\..\\shared\\"))
-                _isDeploymentFolder = false;
+                _folderType = FolderType.Repository;
             else if (Directory.Exists(_projectPath + "\\..\\..\\..\\shared\\"))
-                _isIceFolder = true;
+                _folderType = FolderType.IceRepository;
+            else
+            {
+                _folderType = FolderType.Unknown;
+                return false;
+            }
 
             /*if (_isIceFolder)
                 _textLog.AppendLine("Project is in the \"\\MetaUI\\ICE\\\" folder");
@@ -1028,10 +1050,12 @@ namespace KineticValidator
             }
 
             _textLog.AppendLine($"{_projectName} files validated: {totalFiles}");
+            return true;
         }
 
-        private void ProcessReport(List<ReportItem> reports, bool saveFile = true)
+        private void ProcessReport(List<ReportItem> reports, bool saveFile = true, bool updateTable = true)
         {
+            // !!! move this into validator's bodies
             // remove system validation messages if checkboxes unchecked
             foreach (var sysValidator in _systemValidatorsList)
             {
@@ -1066,9 +1090,9 @@ namespace KineticValidator
             }
 
             // transfer report to table
-            foreach (var reportLine in reports)
+            if (!_runFromCmdLine && updateTable)
             {
-                if (!_runFromCmdLine)
+                foreach (var reportLine in reports)
                 {
                     var newRow = _reportTable.NewRow();
                     newRow[ReportColumns.ProjectName.ToString()] = reportLine.ProjectName;
@@ -1081,6 +1105,7 @@ namespace KineticValidator
                     newRow[ReportColumns.FullFileName.ToString()] =
                         reportLine.FullFileName.Replace(SplitChar.ToString(), Environment.NewLine);
                     _reportTable.Rows.Add(newRow);
+
                 }
             }
 
@@ -1539,13 +1564,13 @@ namespace KineticValidator
                     if (name == FileTagName)
                     {
                         var importFileName = "";
-                        if (_isDeploymentFolder) //deployment folder
+                        if (_folderType == FolderType.Deployment) //deployment folder
                         {
                             importFileName = GetFileFromRef(propValue);
                         }
                         else // MetaUI folder
                         {
-                            if (_isIceFolder)
+                            if (_folderType == FolderType.IceRepository)
                             {
                                 // still in project folder
                                 if (fullFileName.Contains(_projectPath))
@@ -1561,7 +1586,7 @@ namespace KineticValidator
                                     importFileName = GetFileFromRef(propValue);
                                 }
                             }
-                            else
+                            else if (_folderType == FolderType.Repository)
                             {
                                 // still in project folder
                                 if (fullFileName.Contains(_projectPath))
@@ -1892,11 +1917,13 @@ namespace KineticValidator
 
         private void InitReportsGrid(bool collection = false)
         {
+            if (_runFromCmdLine)
+                return;
+
             _reportTable = new DataTable("Examples");
             _reportTable.Clear();
             _reportTable.Rows.Clear();
             _reportTable.Columns.Clear();
-            if (!_runFromCmdLine)
             {
                 this.dataGridView_report.SelectionChanged -= new EventHandler(this.DataGridView_report_SelectionChanged);
                 dataGridView_report.ClearSelection();
@@ -1907,48 +1934,44 @@ namespace KineticValidator
             {
                 _reportTable.Columns.Add(col);
 
-                if (!_runFromCmdLine)
+                var column = new DataGridViewTextBoxColumn
                 {
-                    var column = new DataGridViewTextBoxColumn
-                    {
-                        DataPropertyName = col,
-                        Name = col,
-                        AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells,
-                        SortMode = DataGridViewColumnSortMode.NotSortable // temp. disabled
-                    };
-                    if (col == ReportColumns.JsonPath.ToString()
-                        || col == ReportColumns.Message.ToString())
-                    {
-                        column.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
-                        column.Width = 50;
-                    }
-
-                    if (col == ReportColumns.ProjectName.ToString() && !collection)
-                    {
-                        column.Visible = false;
-                    }
-
-                    dataGridView_report.Columns.Add(column);
+                    DataPropertyName = col,
+                    Name = col,
+                    AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells,
+                    SortMode = DataGridViewColumnSortMode.NotSortable // temp. disabled
+                };
+                if (col == ReportColumns.JsonPath.ToString()
+                    || col == ReportColumns.Message.ToString())
+                {
+                    column.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+                    column.Width = 50;
                 }
+
+                if (col == ReportColumns.ProjectName.ToString() && !collection)
+                {
+                    column.Visible = false;
+                }
+
+                dataGridView_report.Columns.Add(column);
+
             }
 
-            if (!_runFromCmdLine)
+            dataGridView_report.DataError += delegate
+            { };
+            dataGridView_report.RowHeadersVisible = false;
+            dataGridView_report.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.DisplayedCells;
+            dataGridView_report.Columns[ReportColumns.Message.ToString()].Width =
+                Settings.Default.MessageColumnWidth;
+            // reserved for future use
+            dataGridView_report.Columns[ReportColumns.Source.ToString()].Visible = false;
+            dataGridView_report.Columns[ReportColumns.ValidationType.ToString()].Visible = false;
+
+            if (_showPreview)
             {
-                dataGridView_report.DataError += delegate
-                { };
-                dataGridView_report.RowHeadersVisible = false;
-                dataGridView_report.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.DisplayedCells;
-                dataGridView_report.Columns[ReportColumns.Message.ToString()].Width =
-                    Settings.Default.MessageColumnWidth;
-                // reserved for future use
-                dataGridView_report.Columns[ReportColumns.Source.ToString()].Visible = false;
-                dataGridView_report.Columns[ReportColumns.ValidationType.ToString()].Visible = false;
-
-                if (_showPreview)
-                {
-                    this.dataGridView_report.SelectionChanged += new EventHandler(this.DataGridView_report_SelectionChanged);
-                }
+                this.dataGridView_report.SelectionChanged += new EventHandler(this.DataGridView_report_SelectionChanged);
             }
+
         }
 
         private void SaveCollectionToFile(JsonProperty[] typeCollection, string fileName)
@@ -2424,5 +2447,6 @@ namespace KineticValidator
         }
 
         #endregion
+
     }
 }

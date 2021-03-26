@@ -8,11 +8,20 @@ namespace KineticValidator
 {
     public partial class MainForm
     {
-        private void RunValidation_dummy() { }
+        private void RunValidation_dummy()
+        {
+            // add validator messages to total list
+        }
 
-        private void DeserializeFile_dummy() { }
+        private void DeserializeFile_dummy()
+        {
+            // add validator messages to total list
+        }
 
-        private void ParseJsonObject_dummy() { }
+        private void ParseJsonObject_dummy()
+        {
+            // add validator messages to total list
+        }
 
         private void SchemaValidation()
         {
@@ -400,17 +409,17 @@ namespace KineticValidator
 
             foreach (var item in missedStringsList)
             {
-                var slist = stringsList
+                var strlist = stringsList
                     .Where(m => m.Value == item.Value)
                     .Select(n => n.Name);
-                var patches = "";
+                var stringDefinitions = "";
 
-                foreach (var str in slist)
+                foreach (var str in strlist)
                 {
-                    if (!string.IsNullOrEmpty(patches))
-                        patches += ", ";
+                    if (!string.IsNullOrEmpty(stringDefinitions))
+                        stringDefinitions += ", ";
 
-                    patches += str;
+                    stringDefinitions += str;
                 }
 
                 var report = new ReportItem
@@ -420,7 +429,7 @@ namespace KineticValidator
                     FileType = item.FileType.ToString(),
                     LineId = item.LineId.ToString(),
                     JsonPath = item.JsonPath,
-                    Message = $"String \"{item.Value}\" can be replaced with string variable(s): {patches}",
+                    Message = $"String \"{item.Value}\" can be replaced with string variable(s): {stringDefinitions}",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Note.ToString(),
                     Source = "PossibleStringsValues"
@@ -773,16 +782,16 @@ namespace KineticValidator
 
             foreach (var item in missedPatchList)
             {
-                var plist = _patchValues
+                var patchlist = _patchValues
                     .Where(m => m.Value == item.Value)
                     .Select(n => n.Key);
-                var patches = "";
-                foreach (var str in plist)
+                var patchDefinitions = "";
+                foreach (var str in patchlist)
                 {
-                    if (!string.IsNullOrEmpty(patches))
-                        patches += ", ";
+                    if (!string.IsNullOrEmpty(patchDefinitions))
+                        patchDefinitions += ", ";
 
-                    patches += str;
+                    patchDefinitions += str;
                 }
 
                 var report = new ReportItem
@@ -792,7 +801,7 @@ namespace KineticValidator
                     FileType = item.FileType.ToString(),
                     LineId = item.LineId.ToString(),
                     JsonPath = item.JsonPath,
-                    Message = $"Value \"{item.Value}\" can be replaced with patch(es): {patches}",
+                    Message = $"Value \"{item.Value}\" can be replaced with patch(es): {patchDefinitions}",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Note.ToString(),
                     Source = "PossiblePatchValues"
@@ -1387,7 +1396,7 @@ namespace KineticValidator
                     + "\\"
                     + formSubFolder.FirstOrDefault().Value;
                 var searchFile = "";
-                if (_isDeploymentFolder)
+                if (_folderType == FolderType.Deployment)
                 {
                     searchFile = _projectPath
                         + "\\..\\Shared\\search\\"
@@ -1396,7 +1405,7 @@ namespace KineticValidator
                 }
                 else
                 {
-                    if (_isIceFolder)
+                    if (_folderType == FolderType.IceRepository)
                         searchFile = _projectPath
                             + "\\..\\..\\..\\Shared\\search\\"
                             + searchName
@@ -1449,7 +1458,7 @@ namespace KineticValidator
                 List<string> formFileList;
                 var fileFound = false;
 
-                if (_isDeploymentFolder)
+                if (_folderType == FolderType.Deployment)
                 {
                     formFileList = new List<string>
                     {
@@ -1458,7 +1467,7 @@ namespace KineticValidator
                 }
                 else
                 {
-                    if (_isIceFolder)
+                    if (_folderType == FolderType.IceRepository)
                         formFileList = new List<string>
                         {
                             _projectPath + "\\..\\..\\..\\UIApps\\" + form.Value + "\\events.jsonc",
@@ -1665,7 +1674,11 @@ namespace KineticValidator
             }
         }
 
-        //private void IncorrectDVContitionViewName([CallerMemberName] string methodName = null)
+        /*private bool IncorrectDVContitionViewNameTmp(string methodName)
+        {
+            return true;
+        }*/
+
         private void IncorrectDVContitionViewName()
         {
             var dvConditionsList = _jsonPropertiesCollection
