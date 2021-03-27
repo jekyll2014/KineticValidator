@@ -8,19 +8,24 @@ namespace KineticValidator
 {
     public partial class MainForm
     {
-        private void RunValidation_dummy()
+        /*private List<ReportItem> IncorrectDVContitionViewNameTmp(string methodName)
         {
-            // add validator messages to total list
+            return new List<ReportItem>();
+        }*/
+
+        private void RunValidation()
+        {
+            _reportsCollection.AddRange(_RunValidationReportsCollection);
         }
 
-        private void DeserializeFile_dummy()
+        private void DeserializeFile()
         {
-            // add validator messages to total list
+            _reportsCollection.AddRange(_DeserializeFileReportsCollection);
         }
 
-        private void ParseJsonObject_dummy()
+        private void ParseJsonObject()
         {
-            // add validator messages to total list
+            _reportsCollection.AddRange(_ParseJsonObjectReportsCollection);
         }
 
         private void SchemaValidation()
@@ -1396,7 +1401,28 @@ namespace KineticValidator
                     + "\\"
                     + formSubFolder.FirstOrDefault().Value;
                 var searchFile = "";
-                if (_folderType == FolderType.Deployment)
+                if (_folderType == FolderType.Unknown)
+                {
+                    var report = new ReportItem
+                    {
+                        ProjectName = _projectName,
+                        FullFileName = form.FullFileName,
+                        Message = "Folder type not recognized (Deployment/Repository/...)",
+                        FileType = form.FileType.ToString(),
+                        LineId = form.LineId.ToString(),
+                        JsonPath = form.JsonPath,
+                        ValidationType = ValidationTypeEnum.Logic.ToString(),
+                        Severity = ImportanceEnum.Warning.ToString(),
+                        Source = "MissingSearches"
+                    };
+                    _reportsCollection.Add(report);
+
+                    searchFile = _projectPath
+                        + "\\..\\Shared\\search\\"
+                        + searchName
+                        + "\\search.jsonc";
+                }
+                else if (_folderType == FolderType.Deployment)
                 {
                     searchFile = _projectPath
                         + "\\..\\Shared\\search\\"
@@ -1458,17 +1484,37 @@ namespace KineticValidator
                 List<string> formFileList;
                 var fileFound = false;
 
-                if (_folderType == FolderType.Deployment)
+                if (_folderType == FolderType.Unknown)
+                {
+                    var report = new ReportItem
+                    {
+                        ProjectName = _projectName,
+                        FullFileName = form.FullFileName,
+                        Message = "Folder type not recognized (Deployment/Repository/...)",
+                        FileType = form.FileType.ToString(),
+                        LineId = form.LineId.ToString(),
+                        JsonPath = form.JsonPath,
+                        ValidationType = ValidationTypeEnum.Logic.ToString(),
+                        Severity = ImportanceEnum.Warning.ToString(),
+                        Source = "MissingForms"
+                    };
+                    _reportsCollection.Add(report);
+
+                    formFileList = new List<string>
+                    {
+                        _projectPath + "\\..\\" + form.Value + "\\events.jsonc"
+                    };
+                }
+                else if (_folderType == FolderType.Deployment)
                 {
                     formFileList = new List<string>
                     {
                         _projectPath + "\\..\\" + form.Value + "\\events.jsonc"
                     };
                 }
-                else
+                else if (_folderType == FolderType.IceRepository)
                 {
-                    if (_folderType == FolderType.IceRepository)
-                        formFileList = new List<string>
+                    formFileList = new List<string>
                         {
                             _projectPath + "\\..\\..\\..\\UIApps\\" + form.Value + "\\events.jsonc",
                             _projectPath + "\\..\\..\\..\\UIProc\\" + form.Value + "\\events.jsonc",
@@ -1479,8 +1525,10 @@ namespace KineticValidator
                             _projectPath + "\\..\\..\\..\\ICE\\UIReports\\" + form.Value + "\\events.jsonc",
                             _projectPath + "\\..\\..\\..\\ICE\\UITrackers\\" + form.Value + "\\events.jsonc"
                         };
-                    else
-                        formFileList = new List<string>
+                }
+                else
+                {
+                    formFileList = new List<string>
                         {
                             _projectPath + "\\..\\..\\UIApps\\" + form.Value + "\\events.jsonc",
                             _projectPath + "\\..\\..\\UIProc\\" + form.Value + "\\events.jsonc",
@@ -1674,11 +1722,6 @@ namespace KineticValidator
             }
         }
 
-        /*private bool IncorrectDVContitionViewNameTmp(string methodName)
-        {
-            return true;
-        }*/
-
         private void IncorrectDVContitionViewName()
         {
             var dvConditionsList = _jsonPropertiesCollection
@@ -1796,6 +1839,5 @@ namespace KineticValidator
 
         // misprints in property/dataview/string/id names (try finding lower-case property in schema or project scope)
         // searches must use only one dataview
-
     }
 }

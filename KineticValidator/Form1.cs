@@ -164,6 +164,9 @@ namespace KineticValidator
         private Dictionary<string, string> _schemaList = new Dictionary<string, string>();
         private List<string> _filesList = new List<string>();
         private List<JsonProperty> _jsonPropertiesCollection = new List<JsonProperty>();
+        private List<ReportItem> _RunValidationReportsCollection = new List<ReportItem>();
+        private List<ReportItem> _DeserializeFileReportsCollection = new List<ReportItem>();
+        private List<ReportItem> _ParseJsonObjectReportsCollection = new List<ReportItem>();
         private List<ReportItem> _reportsCollection = new List<ReportItem>();
         private List<ReportItem> _ignoreReportsCollection = new List<ReportItem>();
         // full file name, schema URL
@@ -172,7 +175,7 @@ namespace KineticValidator
         private Dictionary<string, string> _patchValues = new Dictionary<string, string>();
         private Dictionary<string, Action> _systemValidatorsList = new Dictionary<string, Action>();
         private Dictionary<string, Action> _validatorsList = new Dictionary<string, Action>();
-        //private Dictionary<string, Func<string,bool>> _validatorsListTmp = new Dictionary<string, Func<string, bool>>();
+        //private Dictionary<string, Func<string, List<ReportItem>>> _validatorsListTmp = new Dictionary<string, List<ReportItem> Func<string, bool>>();
         private List<string> _checkedValidators = new List<string>();
         private Dictionary<string, List<ParsedProperty>> _parsedFiles = new Dictionary<string, List<ParsedProperty>>();
 
@@ -209,9 +212,9 @@ namespace KineticValidator
 
             _systemValidatorsList = new Dictionary<string, Action>
             {
-                {"File list validation", RunValidation_dummy},
-                {"Serialization validation", DeserializeFile_dummy},
-                {"JSON parser validation", ParseJsonObject_dummy},
+                {"File list validation", RunValidation},
+                {"Serialization validation", DeserializeFile},
+                {"JSON parser validation", ParseJsonObject},
             };
 
             var validatorsList = new Dictionary<string, Action>
@@ -255,7 +258,6 @@ namespace KineticValidator
                 {"Incorrect layout id's", IncorrectLayoutIds},
                 {"Incorrect dataview-condition", IncorrectDVContitionViewName},
                 {"Incorrect tab links", IncorrectTabIds},
-
             };
 
             foreach (var validator in _systemValidatorsList)
@@ -398,6 +400,9 @@ namespace KineticValidator
             _schemaList = new Dictionary<string, string>();
             _filesList = new List<string>();
             _jsonPropertiesCollection = new List<JsonProperty>();
+            _RunValidationReportsCollection = new List<ReportItem>();
+            _DeserializeFileReportsCollection = new List<ReportItem>();
+            _ParseJsonObjectReportsCollection = new List<ReportItem>();
             _reportsCollection = new List<ReportItem>();
             _ignoreReportsCollection = new List<ReportItem>();
             _processedFilesList = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -480,6 +485,9 @@ namespace KineticValidator
                 _ignoreReportsCollection = new List<ReportItem>();
                 _processedFilesList = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 _patchValues = new Dictionary<string, string>();
+                _RunValidationReportsCollection = new List<ReportItem>();
+                _DeserializeFileReportsCollection = new List<ReportItem>();
+                _ParseJsonObjectReportsCollection = new List<ReportItem>();
                 _reportsCollection = new List<ReportItem>();
 
                 if (!_runFromCmdLine)
@@ -933,28 +941,27 @@ namespace KineticValidator
 
         private bool RunValidation(bool saveFile = true)
         {
-            //_isDeploymentFolder = _projectPath.Contains("\\Deployment\\Server\\Apps\\");
-            //_isIceFolder = GetShortFileName(_projectPath).StartsWith("Ice");
-            //_isSearch = _projectPath.Contains("\\Shared\\search\\");
-
-            if (Directory.Exists(_projectPath + "\\..\\shared\\"))
+            if (Directory.Exists(_projectPath + "\\..\\shared\\")
+                && _projectPath.Contains("\\Deployment\\Server\\Apps\\"))
+            {
                 _folderType = FolderType.Deployment;
+                //_textLog.AppendLine("Project is in the \"\\Deployment\\Server\\Apps\\MetaUI\\\" folder");
+            }
             else if (Directory.Exists(_projectPath + "\\..\\..\\shared\\"))
+            {
                 _folderType = FolderType.Repository;
-            else if (Directory.Exists(_projectPath + "\\..\\..\\..\\shared\\"))
+                //_textLog.AppendLine("Project is in the \"\\MetaUI\\\" folder");
+            }
+            else if (Directory.Exists(_projectPath + "\\..\\..\\..\\shared\\")
+                && GetShortFileName(_projectPath).StartsWith("Ice"))
+            {
                 _folderType = FolderType.IceRepository;
+                //_textLog.AppendLine("Project is in the \"\\MetaUI\\ICE\\\" folder");
+            }
             else
             {
                 _folderType = FolderType.Unknown;
-                return false;
             }
-
-            /*if (_isIceFolder)
-                _textLog.AppendLine("Project is in the \"\\MetaUI\\ICE\\\" folder");
-            else if (_isDeploymentFolder)
-                _textLog.AppendLine("Project is in the \"\\Deployment\\Server\\Apps\\MetaUI\\\" folder");
-            else
-                _textLog.AppendLine("Project is in the \"\\MetaUI\\\" folder");*/
 
             SetStatus("Searching project files...");
             // collect default project file list
@@ -974,7 +981,7 @@ namespace KineticValidator
                         Severity = ImportanceEnum.Error.ToString(),
                         Source = "RunValidation"
                     };
-                    _reportsCollection.Add(report);
+                    _RunValidationReportsCollection.Add(report);
                 }
                 else
                 {
@@ -998,7 +1005,7 @@ namespace KineticValidator
                     Severity = ImportanceEnum.Note.ToString(),
                     Source = "RunValidation"
                 };
-                _reportsCollection.Add(report);
+                _RunValidationReportsCollection.Add(report);
             }
 
             FlushLog();
@@ -1055,17 +1062,6 @@ namespace KineticValidator
 
         private void ProcessReport(List<ReportItem> reports, bool saveFile = true, bool updateTable = true)
         {
-            // !!! move this into validator's bodies
-            // remove system validation messages if checkboxes unchecked
-            foreach (var sysValidator in _systemValidatorsList)
-            {
-                var validatorMethodName = sysValidator.Value.Method.Name;
-                if (!_checkedValidators.Contains(validatorMethodName))
-                {
-                    reports.RemoveAll(n => n.Source == validatorMethodName.Replace("_dummy", ""));
-                }
-            }
-
             // get list of globally ignored errors
             var systemIgnoreReportsCollection = JsonIo.LoadJson<ReportItem>(GlobalIgnoreFileName);
 
@@ -1105,7 +1101,6 @@ namespace KineticValidator
                     newRow[ReportColumns.FullFileName.ToString()] =
                         reportLine.FullFileName.Replace(SplitChar.ToString(), Environment.NewLine);
                     _reportTable.Rows.Add(newRow);
-
                 }
             }
 
@@ -1433,7 +1428,7 @@ namespace KineticValidator
                     Severity = ImportanceEnum.Error.ToString(),
                     Source = "DeserializeFile"
                 };
-                _reportsCollection.Add(report);
+                _ParseJsonObjectReportsCollection.Add(report);
                 return;
             }
 
@@ -1448,7 +1443,7 @@ namespace KineticValidator
                     Severity = ImportanceEnum.Note.ToString(),
                     Source = "DeserializeFile"
                 };
-                _reportsCollection.Add(report);
+                _ParseJsonObjectReportsCollection.Add(report);
                 return;
             }
 
@@ -1473,7 +1468,7 @@ namespace KineticValidator
                     Severity = ImportanceEnum.Error.ToString(),
                     Source = "DeserializeFile"
                 };
-                _reportsCollection.Add(report);
+                _ParseJsonObjectReportsCollection.Add(report);
                 return;
             }
 
@@ -1535,7 +1530,7 @@ namespace KineticValidator
                                 Severity = ImportanceEnum.Error.ToString(),
                                 Source = "ParseJsonObject"
                             };
-                            _reportsCollection.Add(report);
+                            _ParseJsonObjectReportsCollection.Add(report);
                         }
 
                         version = propValue;
@@ -1564,7 +1559,23 @@ namespace KineticValidator
                     if (name == FileTagName)
                     {
                         var importFileName = "";
-                        if (_folderType == FolderType.Deployment) //deployment folder
+                        if (_folderType == FolderType.Unknown) //deployment folder
+                        {
+                            var report = new ReportItem
+                            {
+                                ProjectName = _projectName,
+                                FullFileName = propValue,
+                                FileType = "",
+                                JsonPath = jsonPath,
+                                Message = "Folder type not recognized (Deployment/Repository/...)",
+                                ValidationType = ValidationTypeEnum.File.ToString(),
+                                Severity = ImportanceEnum.Warning.ToString(),
+                                Source = "ParseJsonObject"
+                            };
+                            _ParseJsonObjectReportsCollection.Add(report);
+                            importFileName = GetFileFromRef(propValue);
+                        }
+                        else if (_folderType == FolderType.Deployment) //deployment folder
                         {
                             importFileName = GetFileFromRef(propValue);
                         }
@@ -1627,7 +1638,7 @@ namespace KineticValidator
                                 Severity = ImportanceEnum.Error.ToString(),
                                 Source = "ParseJsonObject"
                             };
-                            _reportsCollection.Add(report);
+                            _ParseJsonObjectReportsCollection.Add(report);
                         }
                         else
                         {
@@ -1663,7 +1674,7 @@ namespace KineticValidator
                                         : ImportanceEnum.Warning.ToString(),
                                     Source = "ParseJsonObject"
                                 };
-                                _reportsCollection.Add(report);
+                                _ParseJsonObjectReportsCollection.Add(report);
                             }
 
                             newProperty.FileType = fileType = newFileType;
@@ -1704,7 +1715,7 @@ namespace KineticValidator
                             Severity = ImportanceEnum.Error.ToString(),
                             Source = "ParseJsonObject"
                         };
-                        _reportsCollection.Add(report);
+                        _ParseJsonObjectReportsCollection.Add(report);
 
                         break;
                     }
@@ -1761,7 +1772,7 @@ namespace KineticValidator
                             Severity = ImportanceEnum.Error.ToString(),
                             Source = "ParseJsonObject"
                         };
-                        _reportsCollection.Add(report);
+                        _ParseJsonObjectReportsCollection.Add(report);
 
                         break;
                     }
@@ -1818,7 +1829,7 @@ namespace KineticValidator
                             Severity = ImportanceEnum.Error.ToString(),
                             Source = "ParseJsonObject"
                         };
-                        _reportsCollection.Add(report);
+                        _ParseJsonObjectReportsCollection.Add(report);
                     }
                 }
                 break;
@@ -1858,24 +1869,25 @@ namespace KineticValidator
             _projectName = GetShortFileName(_projectPath);
 
             // check if it's a collection or project folder
-            if (!string.IsNullOrEmpty(_projectPath))
-            {
-                _isCollectionFolder = false;
-                var n = 0;
-                foreach (var file in _initialProjectFiles)
-                {
-                    var fullFileName = _projectPath + "\\" + file;
-                    if (!File.Exists(fullFileName))
-                    {
-                        n++;
-                    }
-                }
+            if (string.IsNullOrEmpty(_projectPath))
+                return;
 
-                if (n > _initialProjectFiles.Length / 2)
+            _isCollectionFolder = false;
+            var n = 0;
+            foreach (var file in _initialProjectFiles)
+            {
+                var fullFileName = _projectPath + "\\" + file;
+                if (!File.Exists(fullFileName))
                 {
-                    _isCollectionFolder = true;
+                    n++;
                 }
             }
+
+            if (n > _initialProjectFiles.Length / 2)
+            {
+                _isCollectionFolder = true;
+            }
+
 
             if (!_runFromCmdLine)
             {
