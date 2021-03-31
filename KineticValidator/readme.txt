@@ -41,6 +41,8 @@ Validations implemented:
 	38) JS #_trans.dataView('DataView').count_# - old-style version of a newer "%DataView.count%" macro
 	39) Missing layout id's - any layouts not having the "model.id" or "model.id" different from control "id"
 	40) Incorrect layout id's - any layouts having "model.id" different from control "id"
+	41) Incorrect dataview-condition - "dataview-condition" method must have different values for "dataview" and "result" properties otherwise dataview data could be corrupted.
+	42) Incorrect tab links - to detect inexistent tab id's (broken by AppStudio). Not very reliable - false alarms on slideouts.
 
 	It is possible to select root projects folder to run mass-validation. Note that it tries to find a project in only one sub-folder level.
 	Program also tries to load report from \program_folder\project_folder\ on project folder selection. This is a previous run folder and the report can be outdated.

@@ -2,13 +2,10 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
-using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -17,7 +14,6 @@ using KineticValidator.Properties;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-using NJsonSchema;
 using NJsonSchema.Validation;
 
 using static KineticValidator.JsonPathParser;
@@ -26,14 +22,6 @@ namespace KineticValidator
 {
     public partial class MainForm : Form
     {
-        enum FolderType
-        {
-            Unknown,
-            Deployment,
-            Repository,
-            IceRepository,
-        }
-
         // predefined constants
         private readonly List<ValidationErrorKind> _suppressSchemaErrors;
 
@@ -43,6 +31,8 @@ namespace KineticValidator
 
         private const string FileMask = "*.jsonc";
         private const string SchemaTag = "\"$schema\"";
+        private const string BackupSchemaExtension = ".original";
+
         private const string VersionTagName = "contentVersion";
         private const string SchemaTagName = "$schema";
         private const string FileTagName = "$ref";
@@ -50,7 +40,6 @@ namespace KineticValidator
 
         private const string LogFileName = "hiddenerrors.log";
         private const string DefaultFormCaption = "KineticValidator";
-        private const string BackupSchemaExtension = ".original";
         private const string IgnoreFileName = "ignore.json";
         private const string GlobalIgnoreFileName = "ignore.json";
         private const string ReportTxtFileName = "report.txt";
@@ -67,20 +56,6 @@ namespace KineticValidator
             + Environment.NewLine
             + "/h, /? - get help"
             + Environment.NewLine;
-
-        private class ContentTypeItem
-        {
-            public string FileTypeMask;
-            public string PropertyTypeName;
-            public JsoncContentType FileType;
-
-            public ContentTypeItem()
-            {
-                FileTypeMask = "";
-                PropertyTypeName = "";
-                FileType = JsoncContentType.Unknown;
-            }
-        }
 
         private readonly List<ContentTypeItem> _fileTypes = new List<ContentTypeItem>
         {
@@ -161,7 +136,6 @@ namespace KineticValidator
         private int _oldColumn = -1;
         private int _oldRow = -1;
         //schema URL, schema text
-        private Dictionary<string, string> _schemaList = new Dictionary<string, string>();
         private List<string> _filesList = new List<string>();
         private List<JsonProperty> _jsonPropertiesCollection = new List<JsonProperty>();
         private List<ReportItem> _RunValidationReportsCollection = new List<ReportItem>();
@@ -172,12 +146,8 @@ namespace KineticValidator
         // full file name, schema URL
         private Dictionary<string, string> _processedFilesList = new Dictionary<string, string>();
         private DataTable _reportTable = new DataTable();
-        private Dictionary<string, string> _patchValues = new Dictionary<string, string>();
-        private Dictionary<string, Action> _systemValidatorsList = new Dictionary<string, Action>();
-        private Dictionary<string, Action> _validatorsList = new Dictionary<string, Action>();
-        //private Dictionary<string, Func<string, List<ReportItem>>> _validatorsListTmp = new Dictionary<string, List<ReportItem> Func<string, bool>>();
+        private Dictionary<string, Func<string, List<ReportItem>>> _validatorsList = new Dictionary<string, Func<string, List<ReportItem>>>();
         private List<string> _checkedValidators = new List<string>();
-        private Dictionary<string, List<ParsedProperty>> _parsedFiles = new Dictionary<string, List<ParsedProperty>>();
 
         JsonViewer[] _editors = new JsonViewer[2];
 
@@ -210,72 +180,7 @@ namespace KineticValidator
                 }
             }
 
-            _systemValidatorsList = new Dictionary<string, Action>
-            {
-                {"File list validation", RunValidation},
-                {"Serialization validation", DeserializeFile},
-                {"JSON parser validation", ParseJsonObject},
-            };
-
-            var validatorsList = new Dictionary<string, Action>
-            {
-                {"Schema validation", SchemaValidation},
-                {"Redundant files", RedundantFiles},
-                {"National characters", ValidateFileChars},
-                {"Duplicate JSON property names", DuplicateIds},
-                {"Empty patch names", EmptyPatchNames},
-                {"Redundant patches", RedundantPatches},
-                {"Non existing patches", CallNonExistingPatches},
-                {"Overriding patches", OverridingPatches},
-                {"Possible patches", PossiblePatchValues},
-                {"Hard-coded message strings", HardCodedStrings},
-                {"Possible strings", PossibleStringsValues},
-                {"Apply patches", PatchAllFields},
-                {"Empty string names", EmptyStringNames},
-                {"Empty string values", EmptyStringValues},
-                {"Redundant strings", RedundantStrings},
-                {"Non existing strings", CallNonExistingStrings},
-                {"Overriding strings", OverridingStrings},
-                {"Empty event names", EmptyEventNames},
-                {"Empty events", EmptyEvents},
-                {"Overriding events", OverridingEvents},
-                {"Redundant events", RedundantEvents},
-                {"Non existing events", CallNonExistingEvents},
-                {"Empty dataView names", EmptyDataViewNames},
-                {"Redundant dataViews", RedundantDataViews},
-                {"Non existing dataViews", CallNonExistingDataViews},
-                {"Overriding dataViews", OverridingDataViews},
-                {"Non existing dataTables", CallNonExistingDataTables},
-                {"Empty rule names", EmptyRuleNames},
-                {"Overriding rules", OverridingRules},
-                {"Empty tool names", EmptyToolNames},
-                {"Overriding tools", OverridingTools},
-                {"Missing forms", MissingForms},
-                {"Missing searches", MissingSearches},
-                {"JavaScript code", JsCode},
-                {"JS #_trans.dataView('DataView').count_#", JsDataViewCount},
-                {"Missing layout id's", MissingLayoutIds},
-                {"Incorrect layout id's", IncorrectLayoutIds},
-                {"Incorrect dataview-condition", IncorrectDVContitionViewName},
-                {"Incorrect tab links", IncorrectTabIds},
-            };
-
-            foreach (var validator in _systemValidatorsList)
-            {
-                _validatorsList.Add(validator.Key, validator.Value);
-            }
-
-            /*_validatorsListTmp.Add("validator1", IncorrectDVContitionViewNameTmp);
-
-            foreach (var validator in _validatorsListTmp)
-            {
-                var res = validator.Value("");
-            }*/
-
-            foreach (var validator in validatorsList)
-            {
-                _validatorsList.Add(validator.Key, validator.Value);
-            }
+            _validatorsList = ProjectValidator._validatorsList;
 
             _checkedValidators = Settings.Default.EnabledValidators.Trim(SplitChar).Split(SplitChar).ToList();
 
@@ -397,7 +302,6 @@ namespace KineticValidator
 
             ActivateUiControls(false);
 
-            _schemaList = new Dictionary<string, string>();
             _filesList = new List<string>();
             _jsonPropertiesCollection = new List<JsonProperty>();
             _RunValidationReportsCollection = new List<ReportItem>();
@@ -406,7 +310,6 @@ namespace KineticValidator
             _reportsCollection = new List<ReportItem>();
             _ignoreReportsCollection = new List<ReportItem>();
             _processedFilesList = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            _patchValues = new Dictionary<string, string>();
 
 
             if (!_runFromCmdLine)
@@ -414,7 +317,7 @@ namespace KineticValidator
                 InitReportsGrid();
                 await Task.Run(() =>
                 {
-                    if (RunValidation(_saveTmpFiles))
+                    if (RunValidation(true, _saveTmpFiles))
                     {
                         ProcessReport(_reportsCollection, _saveReport, true);
                     }
@@ -422,7 +325,7 @@ namespace KineticValidator
             }
             else
             {
-                if (RunValidation(_saveTmpFiles))
+                if (RunValidation(true, _saveTmpFiles))
                 {
                     ProcessReport(_reportsCollection, _saveReport, false);
                 }
@@ -470,11 +373,14 @@ namespace KineticValidator
                 };
                 _reportsCollection.Add(report);
             }
+
+            // do not process 'Shared' on deployment folder processing
             var sharedDir = dirList.Where(n => n.EndsWith("\\Shared"));
             if (sharedDir.Any())
+            {
                 dirList.Remove(sharedDir.First());
+            }
 
-            _schemaList = new Dictionary<string, string>();
             var totalReportsCollection = new List<ReportItem>();
             foreach (var dir in dirList)
             {
@@ -484,17 +390,17 @@ namespace KineticValidator
                 _jsonPropertiesCollection = new List<JsonProperty>();
                 _ignoreReportsCollection = new List<ReportItem>();
                 _processedFilesList = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                _patchValues = new Dictionary<string, string>();
                 _RunValidationReportsCollection = new List<ReportItem>();
                 _DeserializeFileReportsCollection = new List<ReportItem>();
                 _ParseJsonObjectReportsCollection = new List<ReportItem>();
                 _reportsCollection = new List<ReportItem>();
+                InitValidator(true);
 
                 if (!_runFromCmdLine)
                 {
                     await Task.Run(() =>
                 {
-                    if (RunValidation(_saveTmpFiles))
+                    if (RunValidation(false, _saveTmpFiles))
                     {
                         ProcessReport(_reportsCollection, _saveReport, false);
                         totalReportsCollection.AddRange(_reportsCollection);
@@ -503,7 +409,7 @@ namespace KineticValidator
                 }
                 else
                 {
-                    if (RunValidation(_saveTmpFiles))
+                    if (RunValidation(false, _saveTmpFiles))
                     {
                         ProcessReport(_reportsCollection, _saveReport, false);
                         totalReportsCollection.AddRange(_reportsCollection);
@@ -939,7 +845,7 @@ namespace KineticValidator
             Exit();
         }
 
-        private bool RunValidation(bool saveFile = true)
+        private bool RunValidation(bool fullInit, bool saveFile = true)
         {
             if (Directory.Exists(_projectPath + "\\..\\shared\\")
                 && _projectPath.Contains("\\Deployment\\Server\\Apps\\"))
@@ -953,7 +859,7 @@ namespace KineticValidator
                 //_textLog.AppendLine("Project is in the \"\\MetaUI\\\" folder");
             }
             else if (Directory.Exists(_projectPath + "\\..\\..\\..\\shared\\")
-                && GetShortFileName(_projectPath).StartsWith("Ice"))
+                && Utilities.GetShortFileName(_projectPath).StartsWith("Ice"))
             {
                 _folderType = FolderType.IceRepository;
                 //_textLog.AppendLine("Project is in the \"\\MetaUI\\ICE\\\" folder");
@@ -970,7 +876,7 @@ namespace KineticValidator
                 var fullFileName = _projectPath + "\\" + file;
                 if (!File.Exists(fullFileName)
                     && file != "strings.jsonc"
-                    && !IsShared(fullFileName))
+                    && !Utilities.IsShared(fullFileName, _projectPath))
                 {
                     var report = new ReportItem
                     {
@@ -1014,7 +920,7 @@ namespace KineticValidator
             for (var i = 0; i < _filesList.Count; i++)
             {
                 SetStatus($"Parsing {_filesList[i]} [{i}/{_filesList.Count}]");
-                var fileType = GetFileTypeFromFileName(_filesList[i]);
+                var fileType = Utilities.GetFileTypeFromFileName(_filesList[i], _fileTypes);
                 DeserializeFile(_filesList[i], fileType, _jsonPropertiesCollection, _processedFilesList, 0);
             }
 
@@ -1045,14 +951,20 @@ namespace KineticValidator
 
             FlushLog();
 
+            // initialize validator settings
+            InitValidator(fullInit);
+
             // run every validator selected
             foreach (var validator in _validatorsList)
             {
-                if (!_checkedValidators.Contains(validator.Value.Method.Name))
+                var validatorMethod = validator.Value.Method.Name;
+                if (!_checkedValidators.Contains(validatorMethod))
                     continue;
 
                 SetStatus($"Validating: {validator.Key}");
-                validator.Value();
+
+                var report = validator.Value(validatorMethod);
+                _reportsCollection.AddRange(report);
                 FlushLog();
             }
 
@@ -1126,281 +1038,6 @@ namespace KineticValidator
             }
         }
 
-        private async void ValidateFileSchema(string fullFileName, string schemaUrl = "")
-        {
-            string jsonText;
-            try
-            {
-                jsonText = File.ReadAllText(fullFileName);
-            }
-            catch (Exception ex)
-            {
-                var report = new ReportItem
-                {
-                    ProjectName = _projectName,
-                    FullFileName = fullFileName,
-                    Message = "File read exception: " + ExceptionPrint(ex),
-                    ValidationType = ValidationTypeEnum.File.ToString(),
-                    Severity = ImportanceEnum.Error.ToString(),
-                    Source = "ValidateFileSchema"
-                };
-                _reportsCollection.Add(report);
-                return;
-            }
-
-            if (string.IsNullOrEmpty(schemaUrl))
-            {
-                var versionIndex = jsonText.IndexOf(SchemaTag, StringComparison.Ordinal);
-                if (versionIndex <= 0)
-                {
-                    var report = new ReportItem
-                    {
-                        ProjectName = _projectName,
-                        FullFileName = fullFileName,
-                        Message = "Schema property not found",
-                        ValidationType = ValidationTypeEnum.Scheme.ToString(),
-                        Severity = ImportanceEnum.Error.ToString(),
-                        Source = "ValidateFileSchema"
-                    };
-                    _reportsCollection.Add(report);
-                    return;
-                }
-
-                versionIndex += SchemaTag.Length;
-                while (versionIndex < jsonText.Length
-                    && jsonText[versionIndex] != '"'
-                    && jsonText[versionIndex] != '\r'
-                    && jsonText[versionIndex] != '\n')
-                    versionIndex++;
-                versionIndex++;
-                var strEnd = versionIndex;
-                while (strEnd < jsonText.Length
-                    && jsonText[strEnd] != '"'
-                    && jsonText[strEnd] != '\r'
-                    && jsonText[strEnd] != '\n')
-                    strEnd++;
-
-                if (versionIndex >= 0 && jsonText.Length > versionIndex)
-                    schemaUrl = jsonText.Substring(versionIndex, strEnd - versionIndex).Trim();
-            }
-
-            if (string.IsNullOrEmpty(schemaUrl) || !schemaUrl.EndsWith(".json"))
-            {
-                var report = new ReportItem
-                {
-                    ProjectName = _projectName,
-                    FullFileName = fullFileName,
-                    Message = $"URL incorrect [{schemaUrl}]",
-                    ValidationType = ValidationTypeEnum.Scheme.ToString(),
-                    Severity = ImportanceEnum.Error.ToString(),
-                    Source = "ValidateFileSchema"
-                };
-                _reportsCollection.Add(report);
-
-                return;
-            }
-
-            if (!_schemaList.ContainsKey(schemaUrl))
-            {
-                var schemaData = "";
-                try
-                {
-                    schemaData = GetSchemaText(schemaUrl);
-                }
-                catch (Exception ex)
-                {
-                    var report = new ReportItem
-                    {
-                        ProjectName = _projectName,
-                        FullFileName = fullFileName,
-                        Message = $"Schema download exception [{schemaUrl}]: {ExceptionPrint(ex)}",
-                        ValidationType = ValidationTypeEnum.Scheme.ToString(),
-                        Severity = ImportanceEnum.Error.ToString(),
-                        Source = "ValidateFileSchema"
-                    };
-                    _reportsCollection.Add(report);
-                }
-
-                _schemaList.Add(schemaUrl, schemaData);
-            }
-
-            var schemaText = _schemaList[schemaUrl];
-
-            if (string.IsNullOrEmpty(schemaText))
-            {
-                var report = new ReportItem
-                {
-                    ProjectName = _projectName,
-                    FullFileName = fullFileName,
-                    Message = $"Schema is empty [{schemaUrl}]",
-                    ValidationType = ValidationTypeEnum.Scheme.ToString(),
-                    Severity = ImportanceEnum.Error.ToString(),
-                    Source = "ValidateFileSchema"
-                };
-                _reportsCollection.Add(report);
-                return;
-            }
-
-            JsonSchema schema;
-            try
-            {
-                schema = await JsonSchema.FromJsonAsync(schemaText).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                var report = new ReportItem
-                {
-                    ProjectName = _projectName,
-                    FullFileName = fullFileName,
-                    Message = $"Schema parse exception [{schemaUrl}]: {ExceptionPrint(ex)}",
-                    ValidationType = ValidationTypeEnum.Scheme.ToString(),
-                    Severity = ImportanceEnum.Error.ToString(),
-                    Source = "ValidateFileSchema"
-                };
-                _reportsCollection.Add(report);
-
-                return;
-            }
-
-            if (schema == null)
-            {
-                _textLog.AppendLine($"{Environment.NewLine}{fullFileName} schema is empty{Environment.NewLine}");
-                var report = new ReportItem
-                {
-                    ProjectName = _projectName,
-                    FullFileName = fullFileName,
-                    Message = $"Schema is empty [{schemaUrl}]",
-                    ValidationType = ValidationTypeEnum.Scheme.ToString(),
-                    Severity = ImportanceEnum.Error.ToString(),
-                    Source = "ValidateFileSchema"
-                };
-                _reportsCollection.Add(report);
-
-                return;
-            }
-
-            ICollection<ValidationError> errors;
-            try
-            {
-                errors = schema.Validate(jsonText);
-            }
-            catch (Exception ex)
-            {
-                var report = new ReportItem
-                {
-                    ProjectName = _projectName,
-                    FullFileName = fullFileName,
-                    Message = "File validation exception: " + ExceptionPrint(ex),
-                    ValidationType = ValidationTypeEnum.Scheme.ToString(),
-                    Severity = ImportanceEnum.Error.ToString(),
-                    Source = "ValidateFileSchema"
-                };
-                _reportsCollection.Add(report);
-
-                return;
-            }
-
-            foreach (var error in errors)
-            {
-                var errorText = SchemaErrorToString(fullFileName, error);
-                var errorList = GetErrorList(error);
-                if (_skipSchemaErrors && _suppressSchemaErrors.Contains(error.Kind))
-                    File.AppendAllText(LogFileName, errorText);
-                else
-                    foreach (var schemaError in errorList)
-                    {
-                        var report = new ReportItem
-                        {
-                            ProjectName = _projectName,
-                            FullFileName = fullFileName,
-                            FileType = GetFileTypeFromFileName(fullFileName).ToString(),
-                            LineId = schemaError.LineId,
-                            JsonPath = schemaError.JsonPath.TrimStart('#', '/'),
-                            Message = schemaError.Message,
-                            ValidationType = ValidationTypeEnum.Scheme.ToString(),
-                            Severity = ImportanceEnum.Error.ToString(),
-                            Source = "ValidateFileSchema"
-                        };
-                        _reportsCollection.Add(report);
-                    }
-            }
-        }
-
-        private string SchemaErrorToString(string fullFileName, ValidationError error)
-        {
-            var errorText = new StringBuilder();
-            errorText.AppendLine(fullFileName
-                + ": line #"
-                + error.LineNumber
-                + " "
-                + error.Kind
-                + ", path="
-                + error.Path);
-
-            if (error is ChildSchemaValidationError subErrorCollection)
-                foreach (var subError in subErrorCollection.Errors)
-                    foreach (var subErrorItem in subError.Value)
-                        errorText.AppendLine("\t"
-                            + "- line #"
-                            + subErrorItem.LineNumber
-                            + " "
-                            + subErrorItem.Kind
-                            + ", path="
-                            + subErrorItem.Path);
-
-            return errorText.ToString();
-        }
-
-        private List<ReportItem> GetErrorList(ValidationError error)
-        {
-            var errorList = new List<ReportItem>();
-            if (error is ChildSchemaValidationError subErrorCollection)
-            {
-                foreach (var subError in subErrorCollection.Errors)
-                    foreach (var subErrorItem in subError.Value)
-                    {
-                        var report = new ReportItem
-                        {
-                            ProjectName = _projectName,
-                            LineId = subErrorItem.LineNumber.ToString(),
-                            JsonPath = subErrorItem.Path.TrimStart('#', '/'),
-                            Message = subErrorItem.Kind.ToString(),
-                            ValidationType = ValidationTypeEnum.Scheme.ToString(),
-                            Severity = ImportanceEnum.Error.ToString(),
-                            Source = "GetErrorList"
-                        };
-
-                        errorList.Add(report);
-                    }
-            }
-            else
-            {
-                var report = new ReportItem
-                {
-                    ProjectName = _projectName,
-                    JsonPath = error.Path.TrimStart('#', '/'),
-                    Message = error.Kind.ToString(),
-                    ValidationType = ValidationTypeEnum.Scheme.ToString(),
-                    Severity = ImportanceEnum.Error.ToString(),
-                    Source = "GetErrorList"
-                };
-                errorList.Add(report);
-            }
-
-            return errorList;
-        }
-
-        private string ExceptionPrint(Exception ex)
-        {
-            var exceptionMessage = new StringBuilder();
-
-            exceptionMessage.AppendLine(ex.Message);
-            if (ex.InnerException != null)
-                exceptionMessage.AppendLine(ExceptionPrint(ex.InnerException));
-
-            return exceptionMessage.ToString();
-        }
-
         private void DeserializeFile(
             string fullFileName,
             JsoncContentType fileType,
@@ -1423,7 +1060,7 @@ namespace KineticValidator
                 {
                     ProjectName = _projectName,
                     FullFileName = fullFileName,
-                    Message = "File read exception: " + ExceptionPrint(ex),
+                    Message = "File read exception: " + Utilities.ExceptionPrint(ex),
                     ValidationType = ValidationTypeEnum.File.ToString(),
                     Severity = ImportanceEnum.Error.ToString(),
                     Source = "DeserializeFile"
@@ -1463,7 +1100,7 @@ namespace KineticValidator
                 {
                     ProjectName = _projectName,
                     FullFileName = fullFileName,
-                    Message = "File parse exception: " + ExceptionPrint(ex),
+                    Message = "File parse exception: " + Utilities.ExceptionPrint(ex),
                     ValidationType = ValidationTypeEnum.Parse.ToString(),
                     Severity = ImportanceEnum.Error.ToString(),
                     Source = "DeserializeFile"
@@ -1474,7 +1111,7 @@ namespace KineticValidator
 
             var ver = "";
             //var jsonDepth = 0;
-            var shared = IsShared(fullFileName);
+            var shared = Utilities.IsShared(fullFileName, _projectPath);
             if (jsonObject != null && jsonObject is JToken)
                 ParseJsonObject(
                     jsonObject,
@@ -1622,7 +1259,7 @@ namespace KineticValidator
                         var importFileType = GetFileTypeFromJsonPath(jsonPath);
                         if (importFileType == JsoncContentType.Unknown)
                         {
-                            importFileType = GetFileTypeFromFileName(importFileName);
+                            importFileType = Utilities.GetFileTypeFromFileName(importFileName, _fileTypes);
                         }
 
                         if (!File.Exists(importFileName))
@@ -1866,7 +1503,7 @@ namespace KineticValidator
         private void SetProject(string path, bool loadReport = true)
         {
             _projectPath = path.TrimEnd('\\');
-            _projectName = GetShortFileName(_projectPath);
+            _projectName = Utilities.GetShortFileName(_projectPath);
 
             // check if it's a collection or project folder
             if (string.IsNullOrEmpty(_projectPath))
@@ -2037,6 +1674,45 @@ namespace KineticValidator
             }
         }
 
+        private void InitValidator(bool fullInit)
+        {
+            // initialize validator settings
+            ProcessConfiguration procConf = null;
+            if (fullInit)
+            {
+                procConf = new ProcessConfiguration()
+                {
+                    BackupSchemaExtension = BackupSchemaExtension,
+                    FileMask = FileMask,
+                    FileTypes = _fileTypes,
+                    IgnoreHttpsError = _ignoreHttpsError,
+                    SchemaTag = SchemaTag,
+                    SkipSchemaErrors = _skipSchemaErrors,
+                    SplitChar = SplitChar,
+                    SuppressSchemaErrors = _suppressSchemaErrors,
+                    SystemDataViews = _systemDataViews,
+                    SystemMacros = _systemMacros
+                };
+            }
+
+            var projConf = new ProjectConfiguration
+            {
+                FolderType = _folderType,
+                ProjectName = _projectName,
+                ProjectPath = _projectPath
+            };
+
+            var seedData = new SeedData
+            {
+                JsonPropertiesCollection = _jsonPropertiesCollection,
+                DeserializeFileReportsCollection = _DeserializeFileReportsCollection,
+                ParseJsonObjectReportsCollection = _ParseJsonObjectReportsCollection,
+                ProcessedFilesList = _processedFilesList,
+                RunValidationReportsCollection = _RunValidationReportsCollection
+            };
+
+            ProjectValidator.Initialize(procConf, projConf, seedData, fullInit);
+        }
         #endregion
 
         #region Utilities
@@ -2079,102 +1755,10 @@ namespace KineticValidator
             }
         }
 
-        private string GetSchemaText(string schemaUrl)
-        {
-            var schemaData = "";
-            if (string.IsNullOrEmpty(schemaUrl))
-                return schemaData;
-
-            var localPath = GetLocalUrlPath(schemaUrl);
-            if (File.Exists(localPath))
-            {
-                schemaData = File.ReadAllText(localPath);
-            }
-            else
-            {
-                if (_ignoreHttpsError)
-                {
-                    ServicePointManager.ServerCertificateValidationCallback = (a, b, c, d) => true;
-                }
-                using (var webClient = new WebClient())
-                {
-                    schemaData = webClient.DownloadString(schemaUrl);
-                    var dirPath = Path.GetDirectoryName(localPath);
-                    if (dirPath != null)
-                    {
-                        try
-                        {
-                            if (!Directory.Exists(dirPath))
-                                Directory.CreateDirectory(dirPath);
-                        }
-                        catch (Exception ex)
-                        {
-                            _textLog.AppendLine($"Can't find directory: {dirPath}{Environment.NewLine}{ex}");
-                            return schemaData;
-                        }
-
-                        File.WriteAllText(localPath + BackupSchemaExtension, schemaData);
-                    }
-                }
-            }
-
-            return schemaData;
-        }
-
-        private string GetLocalUrlPath(string url)
-        {
-            if (!url.Contains("://"))
-                return "";
-
-            url = url.Replace("://", "");
-            if (!url.Contains("/"))
-                return "";
-
-            var currentDirectory = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule?.FileName);
-            var i = url.IndexOf('/');
-            if (i < 0 || url.Length <= url.IndexOf('/'))
-                return "";
-            var localPath = currentDirectory + url.Substring(i);
-            localPath = localPath.Replace('/', '\\');
-            return localPath;
-        }
-
         private string GetFilePath(string longFileName)
         {
             var i = longFileName.LastIndexOf('\\');
             return longFileName.Substring(0, i + 1);
-        }
-
-        private string GetShortFileName(string longFileName)
-        {
-            if (string.IsNullOrEmpty(longFileName))
-            {
-                return longFileName;
-            }
-
-            var i = longFileName.LastIndexOf('\\');
-            if (i < 0)
-            {
-                return longFileName;
-            }
-
-            if (i + 1 >= 0 && longFileName.Length > i + 1)
-                return i < 0 ? longFileName : longFileName.Substring(i + 1);
-            return longFileName;
-        }
-
-        private JsoncContentType GetFileTypeFromFileName(string fullFileName)
-        {
-            var fileType = JsoncContentType.Unknown;
-            var shortFileName = GetShortFileName(fullFileName);
-            foreach (var item in _fileTypes)
-                if (shortFileName.EndsWith(item.FileTypeMask))
-                {
-                    fileType = item.FileType;
-                    break;
-                }
-
-            return fileType;
         }
 
         private JsoncContentType GetFileTypeFromJsonPath(string jsonPath)
@@ -2206,7 +1790,7 @@ namespace KineticValidator
             foreach (var file in _fileTypes)
                 if (file.FileType.ToString() == fileType)
                 {
-                    var projectName = GetShortFileName(_projectPath);
+                    var projectName = Utilities.GetShortFileName(_projectPath);
                     if (noExtension)
                         fileName = projectName
                             + "\\_full-"
@@ -2257,11 +1841,6 @@ namespace KineticValidator
             return simplePath.ToString();
         }
 
-        private bool IsShared(string fullFileName)
-        {
-            return !fullFileName.Contains(_projectPath);
-        }
-
         private void Exit()
         {
             if (Application.MessageLoop)
@@ -2270,148 +1849,6 @@ namespace KineticValidator
             else
                 // Console app
                 Environment.Exit(1);
-        }
-
-        private List<string> GetPatchMacros(string field)
-        {
-            var patchList = new List<string>();
-            if (string.IsNullOrEmpty(field))
-                return patchList;
-
-            var improperChars = new[] { ' ', '.', ',', ':', ';', '\'', '\"', '(', ')', '{', '}', '[', ']', '~' };
-            var tokens = field.Split(improperChars);
-            const char tokenEmbracementChar = '%';
-            foreach (var token in tokens)
-            {
-                var c = CountChars(field, tokenEmbracementChar);
-                if (c != 0 && c % 2 == 0)
-                {
-                    var pos1 = 0;
-                    do
-                    {
-                        pos1 = token.IndexOf(tokenEmbracementChar, pos1);
-                        if (pos1 >= 0 && pos1 < token.Length - 2)
-                        {
-                            var pos2 = token.LastIndexOf(tokenEmbracementChar);
-
-                            if (pos2 >= 0 && pos2 - pos1 > 1)
-                            {
-                                var newPatch = token.Substring(pos1, pos2 - pos1 + 1);
-                                if (newPatch.IndexOf(tokenEmbracementChar, 1, newPatch.Length - 2) >= 0)
-                                {
-                                    // stack overflow comes on "%%patch%%" processing. Easy way to handle.
-                                    if (newPatch.StartsWith("%%") && newPatch.EndsWith("%"))
-                                        pos1 = pos2 + 1;
-                                    else
-                                        patchList.AddRange(GetPatchMacros(newPatch));
-                                }
-                                else
-                                {
-                                    patchList.Add(newPatch);
-                                    pos1 = pos2 + 1;
-                                }
-                            }
-                            else
-                            {
-                                pos1++;
-                            }
-                        }
-                    } while (pos1 >= 0 && pos1 < token.Length - 2);
-                }
-            }
-
-            return patchList;
-        }
-
-        private int CountChars(string data, char countChar)
-        {
-            var c = 0;
-
-            foreach (var ch in data)
-                if (ch == countChar)
-                    c++;
-
-            return c;
-        }
-
-        private struct Brackets
-        {
-            public int pos;
-            public int level;
-            public char bracket;
-            public int number;
-        }
-
-        private List<string> GetValueCall(string field)
-        {
-            var valueList = new List<string>();
-            if (string.IsNullOrEmpty(field))
-                return valueList;
-
-            const char startChar = '{';
-            const char endChar = '}';
-            var improperChars = new[] { ' ', ',', ':', ';', '\'', '\"', '(', ')', '+', '=', '[', ']', '&', '|', '~' };
-
-            var tokens = field.Split(improperChars);
-            foreach (var token in tokens)
-            {
-                var startCharNum = CountChars(token, startChar);
-                var endCharNum = CountChars(token, endChar);
-                if (startCharNum != 0 && endCharNum != 0 && startCharNum == endCharNum)
-                {
-                    var l = 0;
-                    var n = 0;
-                    var sequence = new List<Brackets>();
-                    for (var i = 0; i < token.Length; i++)
-                        if (token[i] == startChar)
-                        {
-                            l++;
-                            sequence.Add(new Brackets
-                            {
-                                pos = i,
-                                level = l,
-                                bracket = startChar,
-                                number = n
-                            });
-                            n++;
-                        }
-                        else if (token[i] == endChar)
-                        {
-                            sequence.Add(new Brackets
-                            {
-                                pos = i,
-                                level = l,
-                                bracket = endChar,
-                                number = n
-                            });
-                            n++;
-                            l--;
-                        }
-
-                    l = sequence.Max(brackets => brackets.level);
-                    for (; l > 0; l--)
-                    {
-                        var s = sequence.Where(m => m.level == l).ToArray();
-                        for (var i = 1; i < s.Length; i++)
-                            if (s[i - 1].number + 1 == s[i].number && s[i - 1].bracket == startChar &&
-                                s[i].bracket == endChar)
-                            {
-                                var str = token.Substring(s[i - 1].pos + 1, s[i].pos - s[i - 1].pos - 1);
-                                if (str.Contains('.'))
-                                    valueList.Add(str);
-                            }
-                    }
-                }
-            }
-
-
-            return valueList;
-        }
-
-        private bool IsSingleValueCall(string field)
-        {
-            Regex regex = new Regex(@"^{+\w+[.]+\w+}$");
-            return regex.Match(field).Success;
         }
 
         private bool TryGetPositionByPathStr(string json, string path, out int startPos, out int endPos)
@@ -2430,32 +1867,6 @@ namespace KineticValidator
             }
 
             return false;
-        }
-
-        private List<ParsedProperty> GetParsedFile(string file)
-        {
-            var list = new List<ParsedProperty>();
-            if (!_parsedFiles.ContainsKey(file))
-            {
-                string json;
-                try
-                {
-                    json = File.ReadAllText(file);
-                }
-                catch
-                {
-                    return list;
-                }
-
-                list = ParseJsonPathsStr(json.Replace(' ', ' '), true);
-                _parsedFiles.Add(file, list);
-            }
-            else
-            {
-                list = _parsedFiles[file];
-            }
-
-            return list;
         }
 
         #endregion
