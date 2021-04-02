@@ -89,7 +89,10 @@ namespace KineticValidator
 
             public List<string> GetParamsSafely(string methodName)
             {
+                if (_noServiceModel) return null;
+
                 List<string> paramList = null;
+
                 MethodInfo method = null;
                 IEnumerable<Type> typesSafely;
                 try
@@ -109,11 +112,11 @@ namespace KineticValidator
                         try
                         {
                             ParameterInfo[] parameters = method.GetParameters();
-                            paramList = parameters.Where(t=>!t.IsOut).Select(t => t.Name).ToList();
+                            paramList = parameters.Where(t => !t.IsOut).Select(t => t.Name).ToList();
                         }
                         catch (Exception ex1)
                         {
-
+                            _noServiceModel = true;
                         }
 
                         break;
@@ -206,7 +209,7 @@ namespace KineticValidator
         private static Dictionary<string, string> _schemaList;
         private static Dictionary<string, List<ParsedProperty>> _parsedFiles;
         private static Dictionary<string, Dictionary<string, List<string>>> _knownServices;
-
+        private static bool _noServiceModel;
 
         internal static void Initialize(ProcessConfiguration processConfiguration, ProjectConfiguration projectConfiguration, SeedData seedData, bool clearCashe)
         {
@@ -249,6 +252,7 @@ namespace KineticValidator
                 _schemaList = new Dictionary<string, string>();
                 _parsedFiles = new Dictionary<string, List<ParsedProperty>>();
                 _knownServices = new Dictionary<string, Dictionary<string, List<string>>>();
+                _noServiceModel = false;
             }
         }
 
@@ -2877,7 +2881,25 @@ namespace KineticValidator
                     continue;
                 }
 
-                if (serverParams.parameters == null) continue;
+                // if failed to get params (no Epicor.ServceModel.dll found)
+                if (serverParams.parameters == null)
+                {
+                    var reportItem = new ReportItem
+                    {
+                        ProjectName = _projectName,
+                        FullFileName = svcMethodName.FullFileName,
+                        Message = $"Failed to retrieve REST method parameters (Epicor.ServiceMode.dll not found?)",
+                        FileType = svcMethodName.FileType.ToString(),
+                        LineId = svcMethodName.LineId.ToString(),
+                        JsonPath = svcMethodName.ParentPath,
+                        ValidationType = ValidationTypeEnum.Logic.ToString(),
+                        Severity = ImportanceEnum.Error.ToString(),
+                        Source = methodName
+                    };
+                    report.Add(reportItem);
+
+                    continue;
+                }
 
                 var missingParams = new StringBuilder();
                 if (methodParamsList?.Count() > 0)
