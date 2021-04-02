@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -17,11 +18,120 @@ namespace KineticValidator
 {
     public static class ProjectValidator
     {
+        private class AssemblyLoader : MarshalByRefObject
+        {
+            private Assembly assembly = null;
+
+            public bool LoadAssembly(string svcName, string assemblyPath)
+            {
+                var nameTokens = svcName.ToUpper().Split('.');
+                if (nameTokens.Length != 3)
+                {
+                    return false;
+                }
+
+                // 1st token must be ["ERP","ICE"]
+                if (!new string[] { "ERP", "ICE" }.Contains(nameTokens[0]))
+                {
+                    return false;
+                }
+
+                // 2nd token must be ["BO,"LIB","PROC","RPT","SEC","WEB"]
+                if (!new string[] { "BO", "LIB", "PROC", "RPT", "SEC", "WEB" }.Contains(nameTokens[1]))
+                {
+                    return false;
+                }
+
+                nameTokens[2] = nameTokens[2].Replace("SVC", "");
+                var fileName = nameTokens[0] + ".Contracts." + nameTokens[1] + "." + nameTokens[2] + ".dll";
+
+                try
+                {
+                    this.assembly = Assembly.LoadFrom(assemblyPath + "\\" + fileName);
+                }
+                catch
+                {
+                    return false;
+                }
+
+                return true;
+            }
+
+            public bool GetMethodsSafely(out List<string> methodsList)
+            {
+                methodsList = new List<string>();
+
+                Type[] typesSafely = null;
+                try
+                {
+                    typesSafely = this.assembly.GetTypes();
+                }
+                catch (ReflectionTypeLoadException ex)
+                {
+                    typesSafely = ex.Types.Where(t => t != null && t.Name.EndsWith("SvcContract") && t.IsPublic).ToArray();
+                }
+
+                foreach (var type in typesSafely)
+                {
+                    var methods = type.GetMethods();
+                    methodsList.AddRange(methods.Select(t => t.Name).ToList());
+                }
+
+                return true;
+            }
+
+            public List<string> GetParamsSafely(string methodName)
+            {
+                List<string> paramList = new List<string>();
+
+                try
+                {
+                    var typesSafely = this.assembly.GetTypes();
+                    foreach (Type type in typesSafely.Where(t => t.Name.EndsWith("SvcContract") && t.IsPublic))
+                    {
+                        MethodBase method = type.GetMethod(methodName);
+                        if (method == null)
+                        {
+                            break;
+                        }
+
+                        ParameterInfo[] parameters = method.GetParameters();
+                        foreach (ParameterInfo parameterInfo in ((IEnumerable<ParameterInfo>)parameters).Where(p => p.IsOut))
+                        {
+                            paramList.Add(parameterInfo.ParameterType.FullName);
+                        }
+                    }
+                }
+                catch (ReflectionTypeLoadException ex)
+                {
+                    var type = ex.Types.Where(t => t != null && t.Name.EndsWith("SvcContract") && t.IsPublic).FirstOrDefault();
+                    var method = type.GetMethod(methodName);
+
+                    try
+                    {
+                        ParameterInfo[] parameters = method.GetParameters();
+
+                        foreach (ParameterInfo parameterInfo in ((IEnumerable<ParameterInfo>)parameters).Where(p => p.IsIn))
+                        {
+                            paramList.Add(parameterInfo.ParameterType.FullName);
+                        }
+                    }
+                    catch (Exception ex1)
+                    {
+
+                    }
+                }
+
+                return paramList;
+            }
+        }
+
         //constants from caller
-        private static char SplitChar;
-        private static string SchemaTag;
-        private static string BackupSchemaExtension;
-        private static string FileMask;
+        private static char _splitChar;
+        private static string _schemaTag;
+        private static string _backupSchemaExtension;
+        private static string _fileMask;
+        private static string _serverAssembliesPath;
         private static List<ContentTypeItem> _fileTypes;
 
         //setting flags from UI
@@ -90,27 +200,31 @@ namespace KineticValidator
             {"Incorrect layout id's", IncorrectLayoutIds},
             {"Incorrect dataview-condition", IncorrectDVContitionViewName},
             {"Incorrect tab links", IncorrectTabIds},
+            {"Incorrect REST calls", IncorrectRestCalls},
         };
 
         //cashed data
         private static Dictionary<string, string> _patchValues;
         private static Dictionary<string, string> _schemaList;
         private static Dictionary<string, List<ParsedProperty>> _parsedFiles;
+        private static Dictionary<string, Dictionary<string, string[]>> _knownServices;
+
 
         internal static void Initialize(ProcessConfiguration processConfiguration, ProjectConfiguration projectConfiguration, SeedData seedData, bool clearCashe)
         {
             if (processConfiguration != null)
             {
-                SplitChar = processConfiguration.SplitChar;
-                SchemaTag = processConfiguration.SchemaTag;
-                BackupSchemaExtension = processConfiguration.BackupSchemaExtension;
-                FileMask = processConfiguration.FileMask;
+                _splitChar = processConfiguration.SplitChar;
+                _schemaTag = processConfiguration.SchemaTag;
+                _backupSchemaExtension = processConfiguration.BackupSchemaExtension;
+                _fileMask = processConfiguration.FileMask;
                 _fileTypes = processConfiguration.FileTypes;
                 _ignoreHttpsError = processConfiguration.IgnoreHttpsError;
                 _skipSchemaErrors = processConfiguration.SkipSchemaErrors;
                 _systemMacros = processConfiguration.SystemMacros;
                 _systemDataViews = processConfiguration.SystemDataViews;
                 _suppressSchemaErrors = processConfiguration.SuppressSchemaErrors;
+                _serverAssembliesPath = processConfiguration.ServerAssembliesPath;
             }
 
             if (projectConfiguration != null)
@@ -136,6 +250,7 @@ namespace KineticValidator
             {
                 _schemaList = new Dictionary<string, string>();
                 _parsedFiles = new Dictionary<string, List<ParsedProperty>>();
+                _knownServices = new Dictionary<string, Dictionary<string, string[]>>();
             }
         }
 
@@ -307,7 +422,7 @@ namespace KineticValidator
 
             if (string.IsNullOrEmpty(schemaUrl))
             {
-                var versionIndex = jsonText.IndexOf(SchemaTag, StringComparison.Ordinal);
+                var versionIndex = jsonText.IndexOf(_schemaTag, StringComparison.Ordinal);
                 if (versionIndex <= 0)
                 {
                     var reportItem = new ReportItem
@@ -323,7 +438,7 @@ namespace KineticValidator
                     return report;
                 }
 
-                versionIndex += SchemaTag.Length;
+                versionIndex += _schemaTag.Length;
                 while (versionIndex < jsonText.Length
                     && jsonText[versionIndex] != '"'
                     && jsonText[versionIndex] != '\r'
@@ -586,7 +701,7 @@ namespace KineticValidator
                             return schemaData;
                         }
 
-                        File.WriteAllText(localPath + BackupSchemaExtension, schemaData);
+                        File.WriteAllText(localPath + _backupSchemaExtension, schemaData);
                     }
                 }
             }
@@ -637,6 +752,73 @@ namespace KineticValidator
 
             return list;
         }
+
+        internal struct RestCallInfo
+        {
+            public string svcName;
+            public string methodName;
+            public string[] parameters;
+        }
+
+        internal static RestCallInfo GetRestCallParams(string svcName, string methodName, string assemblyPath)
+        {
+            var result = new RestCallInfo();
+
+            if (_knownServices.ContainsKey(svcName))
+            {
+                result.svcName = svcName;
+                _knownServices.TryGetValue(svcName, out var methods);
+                if (methods.ContainsKey(methodName))
+                {
+                    result.methodName = methodName;
+                    methods.TryGetValue(methodName, out result.parameters);
+                }
+            }
+            else
+            {
+                List<string> paramList = new List<string>();
+
+                var domain = AppDomain.CreateDomain(nameof(AssemblyLoader), AppDomain.CurrentDomain.Evidence, new AppDomainSetup
+                {
+                    ApplicationBase = Path.GetDirectoryName(typeof(AssemblyLoader).Assembly.Location)
+                });
+                try
+                {
+                    var loader = (AssemblyLoader)domain.CreateInstanceAndUnwrap(typeof(AssemblyLoader).Assembly.FullName, typeof(AssemblyLoader).FullName);
+                    var success = loader.LoadAssembly(svcName, assemblyPath);
+                    if (!success)
+                    {
+                        return result;
+                    }
+
+                    result.svcName = svcName;
+                    success = loader.GetMethodsSafely(out var methodsList);
+                    var m = new Dictionary<string, string[]>();
+                    foreach (var item in methodsList)
+                    {
+                        var paramsList = new List<string>();
+                        //paramsList = loader.GetParamsSafely(item);
+                        m.Add(item, paramsList.ToArray());
+
+                        if (item == methodName)
+                        {
+                            result.methodName = methodName;
+                            result.parameters = paramsList.ToArray();
+                        }
+                    }
+                    _knownServices.Add(svcName, m);
+                }
+                catch (Exception ex)
+                {
+
+                }
+                finally
+                {
+                    AppDomain.Unload(domain);
+                }
+            }
+            return result;
+        }
         #endregion
 
         #region Validator methods
@@ -677,7 +859,7 @@ namespace KineticValidator
         {
             // collect full list of files inside the project folder (not including shared)
             var fullFilesList = new List<string>();
-            fullFilesList.AddRange(Directory.GetFiles(_projectPath, FileMask, SearchOption.AllDirectories));
+            fullFilesList.AddRange(Directory.GetFiles(_projectPath, _fileMask, SearchOption.AllDirectories));
 
             var report = new List<ReportItem>();
             foreach (var file in fullFilesList)
@@ -695,7 +877,7 @@ namespace KineticValidator
                         Message = "File is not used in the project",
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Note.ToString(),
-                        Source = "RedundantFiles"
+                        Source = methodName
                     };
                     report.Add(reportItem);
                 }
@@ -742,7 +924,7 @@ namespace KineticValidator
                             Message = $"JSON file has duplicate property names \"{dup.First().Name}\" with values: {values}",
                             ValidationType = ValidationTypeEnum.Parse.ToString(),
                             Severity = ImportanceEnum.Error.ToString(),
-                            Source = "DuplicateIds"
+                            Source = methodName
                         };
                         report.Add(reportItem);
                     }
@@ -800,7 +982,7 @@ namespace KineticValidator
                         Message = $"Json property \"{item.Name}\" has non-ASCII chars at position(s) {charPos}",
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Error.ToString(),
-                        Source = "ValidateFileChars"
+                        Source = methodName
                     };
                     report.Add(reportItem);
                 }
@@ -842,7 +1024,7 @@ namespace KineticValidator
                         Message = $"JSON property value \"{item.Value}\" has non-ASCII chars at position(s) {charPos}",
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Warning.ToString(),
-                        Source = "ValidateFileChars"
+                        Source = methodName
                     };
                     report.Add(reportItem);
                 }
@@ -874,7 +1056,7 @@ namespace KineticValidator
                     Message = $"String id \"{stringResource.Name}\" is empty",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Error.ToString(),
-                    Source = "EmptyStringNames"
+                    Source = methodName
                 };
                 report.Add(reportItem);
             }
@@ -905,7 +1087,7 @@ namespace KineticValidator
                     Message = $"String id \"{stringResource.Name}\" value is empty",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Warning.ToString(),
-                    Source = "EmptyStringValues"
+                    Source = methodName
                 };
                 report.Add(reportItem);
             }
@@ -941,7 +1123,7 @@ namespace KineticValidator
                         Message = $"String \"{stringResource.Name}\" is not used in the project",
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Warning.ToString(),
-                        Source = "RedundantStrings"
+                        Source = methodName
                     };
                     report.Add(reportItem);
                 }
@@ -984,7 +1166,7 @@ namespace KineticValidator
                             Message = $"String \"{str}\" is not defined in the project",
                             ValidationType = ValidationTypeEnum.Logic.ToString(),
                             Severity = ImportanceEnum.Error.ToString(),
-                            Source = "CallNonExistingStrings"
+                            Source = methodName
                         };
                         report.Add(reportItem);
                     }
@@ -1015,21 +1197,21 @@ namespace KineticValidator
                         {
                             ProjectName = _projectName,
                             FullFileName = strDup[i - 1].FullFileName
-                                           + SplitChar
+                                           + _splitChar
                                            + strDup[i].FullFileName,
                             Message = $"String \"{strDup[i - 1].Name}\" is overridden{Environment.NewLine} [\"{strDup[i - 1].Value}\" => \"{strDup[i].Value}\"]",
                             FileType = strDup[i - 1].FileType
-                                       + SplitChar.ToString()
+                                       + _splitChar.ToString()
                                        + strDup[i].FileType,
                             LineId = strDup[i - 1].LineId
-                                     + SplitChar.ToString()
+                                     + _splitChar.ToString()
                                      + strDup[i].LineId,
                             JsonPath = strDup[i - 1].JsonPath
-                                       + SplitChar
+                                       + _splitChar
                                        + strDup[i].JsonPath,
                             ValidationType = ValidationTypeEnum.Logic.ToString(),
                             Severity = ImportanceEnum.Error.ToString(),
-                            Source = "OverridingStrings"
+                            Source = methodName
                         };
                         report.Add(reportItem);
                     }
@@ -1061,7 +1243,7 @@ namespace KineticValidator
                     Message = $"String \"{field.Value}\" should be moved to strings.jsonc resource file",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Note.ToString(),
-                    Source = "HardCodedStrings"
+                    Source = methodName
                 };
                 report.Add(reportItem);
             }
@@ -1112,7 +1294,7 @@ namespace KineticValidator
                     Message = $"String \"{item.Value}\" can be replaced with string variable(s): {stringDefinitions}",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Note.ToString(),
-                    Source = "PossibleStringsValues"
+                    Source = methodName
                 };
                 report.Add(reportItem);
             }
@@ -1142,7 +1324,7 @@ namespace KineticValidator
                     Message = $"Event id \"{id.Value}\" is empty",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Error.ToString(),
-                    Source = "EmptyEventNames"
+                    Source = methodName
                 };
                 report.Add(reportItem);
             }
@@ -1183,7 +1365,7 @@ namespace KineticValidator
                         JsonPath = id.JsonPath,
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Note.ToString(),
-                        Source = "EmptyEvents"
+                        Source = methodName
                     };
                     report.Add(reportItem);
                 }
@@ -1231,7 +1413,7 @@ namespace KineticValidator
                         Message = $"Event id \"{id.Value}\" is not used in the project",
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Warning.ToString(),
-                        Source = "RedundantEvents"
+                        Source = methodName
                     };
                     report.Add(reportItem);
                 }
@@ -1279,7 +1461,7 @@ namespace KineticValidator
                     Message = $"Event id \"{field.Value}\" is not defined in the project",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Error.ToString(),
-                    Source = "CallNonExistingEvents"
+                    Source = methodName
                 };
                 report.Add(reportItem);
             }
@@ -1312,21 +1494,21 @@ namespace KineticValidator
                             {
                                 ProjectName = _projectName,
                                 FullFileName = projectDuplicates[i - 1].FullFileName
-                                               + SplitChar
+                                               + _splitChar
                                                + projectDuplicates[i].FullFileName,
                                 Message = $"Event \"{projectDuplicates[i - 1].Value}\" is overridden",
                                 FileType = projectDuplicates[i - 1].FileType
-                                           + SplitChar.ToString()
+                                           + _splitChar.ToString()
                                            + projectDuplicates[i].FileType,
                                 LineId = projectDuplicates[i - 1].LineId
-                                         + SplitChar.ToString()
+                                         + _splitChar.ToString()
                                          + projectDuplicates[i].LineId,
                                 JsonPath = projectDuplicates[i - 1].JsonPath
-                                           + SplitChar
+                                           + _splitChar
                                            + projectDuplicates[i].JsonPath,
                                 ValidationType = ValidationTypeEnum.Logic.ToString(),
                                 Severity = ImportanceEnum.Error.ToString(),
-                                Source = "OverridingEvents"
+                                Source = methodName
                             };
                             report.Add(reportItem);
                         }
@@ -1349,21 +1531,21 @@ namespace KineticValidator
                             {
                                 ProjectName = _projectName,
                                 FullFileName = sharedDuplicates.Last().FullFileName
-                                               + SplitChar
+                                               + _splitChar
                                                + projectDuplicates.Last().FullFileName,
                                 Message = $"Shared event \"{sharedDuplicates.Last().Value}\" is overridden",
                                 FileType = sharedDuplicates.Last().FileType
-                                           + SplitChar.ToString()
+                                           + _splitChar.ToString()
                                            + projectDuplicates.Last().FileType,
                                 LineId = sharedDuplicates.Last().LineId
-                                         + SplitChar.ToString()
+                                         + _splitChar.ToString()
                                          + projectDuplicates.Last().LineId,
                                 JsonPath = sharedDuplicates.Last().JsonPath
-                                           + SplitChar
+                                           + _splitChar
                                            + projectDuplicates.Last().JsonPath,
                                 ValidationType = ValidationTypeEnum.Logic.ToString(),
                                 Severity = ImportanceEnum.Warning.ToString(),
-                                Source = "OverridingEvents"
+                                Source = methodName
                             };
                             report.Add(reportItem);
                         }
@@ -1396,7 +1578,7 @@ namespace KineticValidator
                     Message = $"Patch id \"{patchResource.Value}\" is empty",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Error.ToString(),
-                    Source = "EmptyPatchNames"
+                    Source = methodName
                 };
                 report.Add(reportItem);
             }
@@ -1498,7 +1680,7 @@ namespace KineticValidator
                     Message = $"Value \"{item.Value}\" can be replaced with patch(es): {patchDefinitions}",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Note.ToString(),
-                    Source = "PossiblePatchValues"
+                    Source = methodName
                 };
                 report.Add(reportItem);
             }
@@ -1563,7 +1745,7 @@ namespace KineticValidator
                         Message = $"Patch \"{patchResource.Value}\" is not used in the project",
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Warning.ToString(),
-                        Source = "RedundantPatches"
+                        Source = methodName
                     };
                     report.Add(reportItem);
                 }
@@ -1606,7 +1788,7 @@ namespace KineticValidator
                             Message = $"Patch \"{patchItem}\" is not defined in the project",
                             ValidationType = ValidationTypeEnum.Logic.ToString(),
                             Severity = ImportanceEnum.Error.ToString(),
-                            Source = "CallNonExistingPatches"
+                            Source = methodName
                         };
                         report.Add(reportItem);
                     }
@@ -1655,21 +1837,21 @@ namespace KineticValidator
                         {
                             ProjectName = _projectName,
                             FullFileName = patchDup[i - 1].FullFileName
-                                           + SplitChar
+                                           + _splitChar
                                            + patchDup[i].FullFileName,
                             Message = $"Patch \"{patchDup[i - 1].Value}\" is overridden{Environment.NewLine} [\"{oldValue.Value}\" => \"{newValue.Value}\"]",
                             FileType = patchDup[i - 1].FileType
-                                       + SplitChar.ToString()
+                                       + _splitChar.ToString()
                                        + patchDup[i].FileType,
                             LineId = patchDup[i - 1].LineId
-                                     + SplitChar.ToString()
+                                     + _splitChar.ToString()
                                      + patchDup[i].LineId,
                             JsonPath = patchDup[i - 1].JsonPath
-                                       + SplitChar
+                                       + _splitChar
                                        + patchDup[i].JsonPath,
                             ValidationType = ValidationTypeEnum.Logic.ToString(),
                             Severity = ImportanceEnum.Error.ToString(),
-                            Source = "OverridingPatches"
+                            Source = methodName
                         };
                         report.Add(reportItem);
                     }
@@ -1701,7 +1883,7 @@ namespace KineticValidator
                     Message = $"DataView id \"{viewResource.Value}\" is empty",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Error.ToString(),
-                    Source = "EmptyDataViewNames"
+                    Source = methodName
                 };
                 report.Add(reportItem);
             }
@@ -1738,7 +1920,7 @@ namespace KineticValidator
                         Message = $"DataView \"{viewResource.Value}\" is not used in the project",
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Warning.ToString(),
-                        Source = "RedundantDataViews"
+                        Source = methodName
                     };
                     report.Add(reportItem);
                 }
@@ -1828,7 +2010,7 @@ namespace KineticValidator
                             Message = $"DataView \"{viewName}\" is not defined in the project",
                             ValidationType = ValidationTypeEnum.Logic.ToString(),
                             Severity = ImportanceEnum.Error.ToString(),
-                            Source = "CallNonExistingDataViews"
+                            Source = methodName
                         };
                         report.Add(reportItem);
                     }
@@ -1886,7 +2068,7 @@ namespace KineticValidator
                         Message = $"DataTable \"{usedDataTable}\" is not defined in the project",
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Error.ToString(),
-                        Source = "CallNonExistingDataTables"
+                        Source = methodName
                     };
                     report.Add(reportItem);
                 }
@@ -1917,21 +2099,21 @@ namespace KineticValidator
                         {
                             ProjectName = _projectName,
                             FullFileName = viewDup[i - 1].FullFileName
-                                           + SplitChar
+                                           + _splitChar
                                            + viewDup[i].FullFileName,
                             Message = $"DataView \"{viewDup[i - 1].Value}\" is overridden",
                             FileType = viewDup[i - 1].FileType
-                                       + SplitChar.ToString()
+                                       + _splitChar.ToString()
                                        + viewDup[i].FileType,
                             LineId = viewDup[i - 1].LineId
-                                     + SplitChar.ToString()
+                                     + _splitChar.ToString()
                                      + viewDup[i].LineId,
                             JsonPath = viewDup[i - 1].JsonPath
-                                       + SplitChar
+                                       + _splitChar
                                        + viewDup[i].JsonPath,
                             ValidationType = ValidationTypeEnum.Logic.ToString(),
                             Severity = ImportanceEnum.Error.ToString(),
-                            Source = "OverridingDataViews"
+                            Source = methodName
                         };
                         report.Add(reportItem);
                     }
@@ -1962,7 +2144,7 @@ namespace KineticValidator
                     JsonPath = dup.JsonPath,
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Error.ToString(),
-                    Source = "EmptyRuleNames"
+                    Source = methodName
                 };
                 report.Add(reportItem);
             }
@@ -1993,21 +2175,21 @@ namespace KineticValidator
                         {
                             ProjectName = _projectName,
                             FullFileName = ruleDup[i - 1].FullFileName
-                                           + SplitChar
+                                           + _splitChar
                                            + ruleDup[i].FullFileName,
                             Message = $"Rule \"{ruleDup[i - 1].Value}\" is overridden",
                             FileType = ruleDup[i - 1].FileType
-                                       + SplitChar.ToString()
+                                       + _splitChar.ToString()
                                        + ruleDup[i].FileType,
                             LineId = ruleDup[i - 1].LineId
-                                     + SplitChar.ToString()
+                                     + _splitChar.ToString()
                                      + ruleDup[i].LineId,
                             JsonPath = ruleDup[i - 1].JsonPath
-                                       + SplitChar
+                                       + _splitChar
                                        + ruleDup[i].JsonPath,
                             ValidationType = ValidationTypeEnum.Logic.ToString(),
                             Severity = ImportanceEnum.Error.ToString(),
-                            Source = "OverridingRules"
+                            Source = methodName
                         };
                         report.Add(reportItem);
                     }
@@ -2039,7 +2221,7 @@ namespace KineticValidator
                     JsonPath = dup.JsonPath,
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Error.ToString(),
-                    Source = "EmptyToolNames"
+                    Source = methodName
                 };
                 report.Add(reportItem);
             }
@@ -2069,21 +2251,21 @@ namespace KineticValidator
                         {
                             ProjectName = _projectName,
                             FullFileName = toolDup[i - 1].FullFileName
-                                           + SplitChar
+                                           + _splitChar
                                            + toolDup[i].FullFileName,
                             Message = $"Tool \"{toolDup[i - 1].Value}\" is overridden",
                             FileType = toolDup[i - 1].FileType
-                                       + SplitChar.ToString()
+                                       + _splitChar.ToString()
                                        + toolDup[i].FileType,
                             LineId = toolDup[i - 1].LineId
-                                     + SplitChar.ToString()
+                                     + _splitChar.ToString()
                                      + toolDup[i].LineId,
                             JsonPath = toolDup[i - 1].JsonPath
-                                       + SplitChar
+                                       + _splitChar
                                        + toolDup[i].JsonPath,
                             ValidationType = ValidationTypeEnum.Logic.ToString(),
                             Severity = ImportanceEnum.Error.ToString(),
-                            Source = "OverridingTools"
+                            Source = methodName
                         };
                         report.Add(reportItem);
                     }
@@ -2138,7 +2320,7 @@ namespace KineticValidator
                         JsonPath = form.JsonPath,
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Warning.ToString(),
-                        Source = "MissingSearches"
+                        Source = methodName
                     };
                     report.Add(reportItem);
 
@@ -2180,7 +2362,7 @@ namespace KineticValidator
                         JsonPath = form.JsonPath,
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Error.ToString(),
-                        Source = "MissingSearches"
+                        Source = methodName
                     };
                     report.Add(reportItem);
                 }
@@ -2223,7 +2405,7 @@ namespace KineticValidator
                         JsonPath = form.JsonPath,
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Warning.ToString(),
-                        Source = "MissingForms"
+                        Source = methodName
                     };
                     report.Add(reportItem);
 
@@ -2289,7 +2471,7 @@ namespace KineticValidator
                         JsonPath = form.JsonPath,
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Warning.ToString(),
-                        Source = "MissingForms"
+                        Source = methodName
                     };
                     report.Add(reportItem);
                 }
@@ -2318,7 +2500,7 @@ namespace KineticValidator
                     JsonPath = dup.JsonPath,
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Note.ToString(),
-                    Source = "JsCode"
+                    Source = methodName
                 };
                 report.Add(reportItem);
             }
@@ -2347,7 +2529,7 @@ namespace KineticValidator
                     JsonPath = dup.JsonPath,
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Warning.ToString(),
-                    Source = "JsDataViewCount"
+                    Source = methodName
                 };
                 report.Add(reportItem);
             }
@@ -2387,7 +2569,7 @@ namespace KineticValidator
                         JsonPath = idItem.JsonPath,
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Error.ToString(),
-                        Source = "MissingLayoutIds"
+                        Source = methodName
                     };
                 }
                 else
@@ -2431,21 +2613,21 @@ namespace KineticValidator
                     {
                         ProjectName = _projectName,
                         FullFileName = idItem.FullFileName
-                                       + SplitChar
+                                       + _splitChar
                                        + modelId.First().FullFileName,
                         Message = $"Layout control id=\"{idItem.Value}\" doesn't match model id=\"{modelId.First().Value}\"",
                         FileType = idItem.FileType.ToString()
-                                   + SplitChar
+                                   + _splitChar
                                    + modelId.First().FileType.ToString(),
                         LineId = idItem.LineId.ToString()
-                                 + SplitChar
+                                 + _splitChar
                                  + modelId.First().LineId.ToString(),
                         JsonPath = idItem.JsonPath
-                                   + SplitChar
+                                   + _splitChar
                                    + modelId.First().JsonPath,
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Error.ToString(),
-                        Source = "IncorrectLayoutIds"
+                        Source = methodName
                     };
                 }
                 else
@@ -2499,7 +2681,7 @@ namespace KineticValidator
                         JsonPath = item.JsonPath,
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Error.ToString(),
-                        Source = "IncorrectDVContitionViewName"
+                        Source = methodName
                     };
                     report.Add(reportItem);
                 }
@@ -2515,7 +2697,7 @@ namespace KineticValidator
                         JsonPath = dvName[0].JsonPath,
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Error.ToString(),
-                        Source = "IncorrectDVContitionViewName"
+                        Source = methodName
                     };
                     report.Add(reportItem);
                 }
@@ -2568,10 +2750,128 @@ namespace KineticValidator
                             JsonPath = item.JsonPath,
                             ValidationType = ValidationTypeEnum.Logic.ToString(),
                             Severity = ImportanceEnum.Error.ToString(),
-                            Source = "IncorrectTabIds"
+                            Source = methodName
                         };
                         report.Add(reportItem);
                     }
+                }
+            }
+            return report;
+        }
+
+        internal static List<ReportItem> IncorrectRestCalls(string methodName)
+        {
+            var restCallsList = _jsonPropertiesCollection
+                .Where(n =>
+                    !n.Shared
+                    && n.ItemType == JsonItemType.Property
+                    && n.FileType == JsoncContentType.Events
+                    && n.Value == "rest-erp"
+                    && n.Name == "type");
+
+            var report = new List<ReportItem>();
+            foreach (var item in restCallsList)
+            {
+                var serviceName = _jsonPropertiesCollection
+                    .Where(n =>
+                        !n.Shared
+                        && n.FullFileName == item.FullFileName
+                        && n.ItemType == JsonItemType.Property
+                        && n.FileType == JsoncContentType.Events
+                        && n.JsonPath == item.ParentPath + ".param.svc"
+                        && !string.IsNullOrEmpty(n.Value)).FirstOrDefault();
+
+                var svcMethodName = _jsonPropertiesCollection
+                   .Where(n =>
+                       !n.Shared
+                       && n.FullFileName == item.FullFileName
+                       && n.ItemType == JsonItemType.Property
+                       && n.FileType == JsoncContentType.Events
+                       && n.JsonPath == item.ParentPath + ".param.svcPath"
+                       && !string.IsNullOrEmpty(n.Value)).FirstOrDefault();
+
+                var methodParamsList = _jsonPropertiesCollection
+                   .Where(n =>
+                       !n.Shared
+                       && n.FullFileName == item.FullFileName
+                       && n.ItemType == JsonItemType.Property
+                       && n.FileType == JsoncContentType.Events
+                       && n.JsonPath.StartsWith(item.ParentPath + ".param.methodParameters")
+                       && n.Name == "field");
+
+                if (serviceName == null || string.IsNullOrEmpty(serviceName.Value))
+                {
+                    var reportItem = new ReportItem
+                    {
+                        ProjectName = _projectName,
+                        FullFileName = item.FullFileName,
+                        Message = $"REST Service name not defined",
+                        FileType = item.FileType.ToString(),
+                        LineId = item.LineId.ToString(),
+                        JsonPath = item.JsonPath,
+                        ValidationType = ValidationTypeEnum.Logic.ToString(),
+                        Severity = ImportanceEnum.Error.ToString(),
+                        Source = methodName
+                    };
+                    report.Add(reportItem);
+                    continue;
+                }
+                if (svcMethodName == null || string.IsNullOrEmpty(svcMethodName?.Value))
+                {
+                    var reportItem = new ReportItem
+                    {
+                        ProjectName = _projectName,
+                        FullFileName = item.FullFileName,
+                        Message = $"REST Method name not defined",
+                        FileType = item.FileType.ToString(),
+                        LineId = item.LineId.ToString(),
+                        JsonPath = item.JsonPath,
+                        ValidationType = ValidationTypeEnum.Logic.ToString(),
+                        Severity = ImportanceEnum.Error.ToString(),
+                        Source = methodName
+                    };
+                    report.Add(reportItem);
+                    continue;
+                }
+
+                if (IsSingleValueCall(serviceName?.Value) || IsSingleValueCall(svcMethodName?.Value))
+                {
+                    continue;
+                }
+
+                var serverParams = GetRestCallParams(serviceName.Value, svcMethodName.Value, _serverAssembliesPath);
+
+                if (string.IsNullOrEmpty(serverParams.svcName))
+                {
+                    var reportItem = new ReportItem
+                    {
+                        ProjectName = _projectName,
+                        FullFileName = serviceName.FullFileName,
+                        Message = $"Incorrect REST service name: {serviceName}",
+                        FileType = serviceName.FileType.ToString(),
+                        LineId = serviceName.LineId.ToString(),
+                        JsonPath = serviceName.JsonPath,
+                        ValidationType = ValidationTypeEnum.Logic.ToString(),
+                        Severity = ImportanceEnum.Error.ToString(),
+                        Source = methodName
+                    };
+                    report.Add(reportItem);
+                }
+                else if (string.IsNullOrEmpty(serverParams.methodName))
+                {
+                    var reportItem = new ReportItem
+                    {
+                        ProjectName = _projectName,
+                        FullFileName = svcMethodName.FullFileName,
+                        Message = $"Incorrect REST method name: {svcMethodName.Value}",
+                        FileType = svcMethodName.FileType.ToString(),
+                        LineId = svcMethodName.LineId.ToString(),
+                        JsonPath = svcMethodName.JsonPath,
+                        ValidationType = ValidationTypeEnum.Logic.ToString(),
+                        Severity = ImportanceEnum.Error.ToString(),
+                        Source = methodName
+                    };
+                    report.Add(reportItem);
                 }
             }
             return report;

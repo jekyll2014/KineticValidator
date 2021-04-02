@@ -80,5 +80,8 @@
     <Setting Name="SaveReport" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">True</Value>
     </Setting>
+    <Setting Name="ServerAssembliesPath" Type="System.String" Scope="User">
+      <Value Profile="(Default)">C:\_projects\ERP\Current\Deployment\Server\Assemblies</Value>
+    </Setting>
   </Settings>
 </SettingsFile>

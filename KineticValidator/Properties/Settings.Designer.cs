@@ -337,5 +337,17 @@ namespace KineticValidator.Properties {
                 this["SaveReport"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("C:\\_projects\\ERP\\Current\\Deployment\\Server\\Assemblies")]
+        public string ServerAssembliesPath {
+            get {
+                return ((string)(this["ServerAssembliesPath"]));
+            }
+            set {
+                this["ServerAssembliesPath"] = value;
+            }
+        }
     }
 }

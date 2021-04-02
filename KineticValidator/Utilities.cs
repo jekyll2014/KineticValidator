@@ -39,6 +39,7 @@ namespace KineticValidator
         public string[] SystemMacros;
         public string[] SystemDataViews;
         public List<ValidationErrorKind> SuppressSchemaErrors;
+        public string ServerAssembliesPath;
     }
 
     internal class ProjectConfiguration

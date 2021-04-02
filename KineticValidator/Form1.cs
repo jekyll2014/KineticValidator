@@ -28,6 +28,7 @@ namespace KineticValidator
         private readonly string[] _initialProjectFiles;
         private readonly string[] _systemMacros;
         private readonly string[] _systemDataViews;
+        private readonly string _serverAssembliesPath;
 
         private const string FileMask = "*.jsonc";
         private const string SchemaTag = "\"$schema\"";
@@ -135,6 +136,7 @@ namespace KineticValidator
         private string _projectName = "";
         private int _oldColumn = -1;
         private int _oldRow = -1;
+
         //schema URL, schema text
         private List<string> _filesList = new List<string>();
         private List<JsonProperty> _jsonPropertiesCollection = new List<JsonProperty>();
@@ -143,6 +145,7 @@ namespace KineticValidator
         private List<ReportItem> _ParseJsonObjectReportsCollection = new List<ReportItem>();
         private List<ReportItem> _reportsCollection = new List<ReportItem>();
         private List<ReportItem> _ignoreReportsCollection = new List<ReportItem>();
+
         // full file name, schema URL
         private Dictionary<string, string> _processedFilesList = new Dictionary<string, string>();
         private DataTable _reportTable = new DataTable();
@@ -164,6 +167,7 @@ namespace KineticValidator
             _initialProjectFiles = Settings.Default.InitialProjectFiles.Split(SplitChar);
             _systemMacros = Settings.Default.SystemMacros.Split(SplitChar);
             _systemDataViews = Settings.Default.SystemDataViews.Split(SplitChar);
+            _serverAssembliesPath = Settings.Default.ServerAssembliesPath;
 
             _ignoreHttpsError = Settings.Default.IgnoreHttpsError;
             _skipSchemaErrors = Settings.Default.SkipSchemaErrors;
@@ -237,6 +241,7 @@ namespace KineticValidator
         {
             this.dataGridView_report.SelectionChanged -= new EventHandler(this.DataGridView_report_SelectionChanged);
 
+            Settings.Default.ServerAssembliesPath = _serverAssembliesPath;
             Settings.Default.LastProjectFolder = folderBrowserDialog1.SelectedPath;
             Settings.Default.IgnoreHttpsError = _ignoreHttpsError;
             Settings.Default.AlwaysOnTop = _alwaysOnTop;
@@ -1691,7 +1696,8 @@ namespace KineticValidator
                     SplitChar = SplitChar,
                     SuppressSchemaErrors = _suppressSchemaErrors,
                     SystemDataViews = _systemDataViews,
-                    SystemMacros = _systemMacros
+                    SystemMacros = _systemMacros,
+                    ServerAssembliesPath = _serverAssembliesPath
                 };
             }
 
