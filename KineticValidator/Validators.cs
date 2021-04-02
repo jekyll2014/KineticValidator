@@ -47,7 +47,7 @@ namespace KineticValidator
 
                 try
                 {
-                    this.assembly = Assembly.LoadFrom(assemblyPath + "\\" + fileName);
+                    this.assembly = Assembly.LoadFile(assemblyPath + "\\" + fileName);
                 }
                 catch
                 {
@@ -61,20 +61,27 @@ namespace KineticValidator
             {
                 methodsList = new List<string>();
 
-                Type[] typesSafely = null;
+                Type[] typesSafely;
                 try
                 {
-                    typesSafely = this.assembly.GetTypes();
+                    typesSafely = this.assembly.GetTypes().Where(t => t != null && t.Name.EndsWith("SvcContract") && t.IsPublic).ToArray();
                 }
                 catch (ReflectionTypeLoadException ex)
                 {
                     typesSafely = ex.Types.Where(t => t != null && t.Name.EndsWith("SvcContract") && t.IsPublic).ToArray();
                 }
 
-                foreach (var type in typesSafely)
+                try
                 {
-                    var methods = type.GetMethods();
-                    methodsList.AddRange(methods.Select(t => t.Name).ToList());
+                    foreach (var type in typesSafely)
+                    {
+                        var methods = type.GetMethods();
+                        methodsList.AddRange(methods.Select(t => t.Name).ToList());
+                    }
+                }
+                catch (Exception ex)
+                {
+
                 }
 
                 return true;
@@ -82,43 +89,34 @@ namespace KineticValidator
 
             public List<string> GetParamsSafely(string methodName)
             {
-                List<string> paramList = new List<string>();
-
+                List<string> paramList = null;
+                MethodInfo method = null;
+                IEnumerable<Type> typesSafely;
                 try
                 {
-                    var typesSafely = this.assembly.GetTypes();
-                    foreach (Type type in typesSafely.Where(t => t.Name.EndsWith("SvcContract") && t.IsPublic))
-                    {
-                        MethodBase method = type.GetMethod(methodName);
-                        if (method == null)
-                        {
-                            break;
-                        }
-
-                        ParameterInfo[] parameters = method.GetParameters();
-                        foreach (ParameterInfo parameterInfo in ((IEnumerable<ParameterInfo>)parameters).Where(p => p.IsOut))
-                        {
-                            paramList.Add(parameterInfo.ParameterType.FullName);
-                        }
-                    }
+                    typesSafely = this.assembly.GetTypes().Where(t => t.Name.EndsWith("SvcContract") && t.IsPublic);
                 }
                 catch (ReflectionTypeLoadException ex)
                 {
-                    var type = ex.Types.Where(t => t != null && t.Name.EndsWith("SvcContract") && t.IsPublic).FirstOrDefault();
-                    var method = type.GetMethod(methodName);
+                    typesSafely = ex.Types.Where(t => t != null && t.Name.EndsWith("SvcContract") && t.IsPublic);
+                }
 
-                    try
+                foreach (var type in typesSafely)
+                {
+                    method = type.GetMethod(methodName);
+                    if (method != null)
                     {
-                        ParameterInfo[] parameters = method.GetParameters();
-
-                        foreach (ParameterInfo parameterInfo in ((IEnumerable<ParameterInfo>)parameters).Where(p => p.IsIn))
+                        try
                         {
-                            paramList.Add(parameterInfo.ParameterType.FullName);
+                            ParameterInfo[] parameters = method.GetParameters();
+                            paramList = parameters.Where(t=>!t.IsOut).Select(t => t.Name).ToList();
                         }
-                    }
-                    catch (Exception ex1)
-                    {
+                        catch (Exception ex1)
+                        {
 
+                        }
+
+                        break;
                     }
                 }
 
@@ -207,7 +205,7 @@ namespace KineticValidator
         private static Dictionary<string, string> _patchValues;
         private static Dictionary<string, string> _schemaList;
         private static Dictionary<string, List<ParsedProperty>> _parsedFiles;
-        private static Dictionary<string, Dictionary<string, string[]>> _knownServices;
+        private static Dictionary<string, Dictionary<string, List<string>>> _knownServices;
 
 
         internal static void Initialize(ProcessConfiguration processConfiguration, ProjectConfiguration projectConfiguration, SeedData seedData, bool clearCashe)
@@ -250,7 +248,7 @@ namespace KineticValidator
             {
                 _schemaList = new Dictionary<string, string>();
                 _parsedFiles = new Dictionary<string, List<ParsedProperty>>();
-                _knownServices = new Dictionary<string, Dictionary<string, string[]>>();
+                _knownServices = new Dictionary<string, Dictionary<string, List<string>>>();
             }
         }
 
@@ -757,7 +755,7 @@ namespace KineticValidator
         {
             public string svcName;
             public string methodName;
-            public string[] parameters;
+            public List<string> parameters;
         }
 
         internal static RestCallInfo GetRestCallParams(string svcName, string methodName, string assemblyPath)
@@ -780,11 +778,13 @@ namespace KineticValidator
 
                 var domain = AppDomain.CreateDomain(nameof(AssemblyLoader), AppDomain.CurrentDomain.Evidence, new AppDomainSetup
                 {
-                    ApplicationBase = Path.GetDirectoryName(typeof(AssemblyLoader).Assembly.Location)
+                    ApplicationBase = Path.GetDirectoryName(typeof(AssemblyLoader).Assembly.Location),
+                    //PrivateBinPath = assemblyPath+"\\..\\Bin"
                 });
                 try
                 {
                     var loader = (AssemblyLoader)domain.CreateInstanceAndUnwrap(typeof(AssemblyLoader).Assembly.FullName, typeof(AssemblyLoader).FullName);
+
                     var success = loader.LoadAssembly(svcName, assemblyPath);
                     if (!success)
                     {
@@ -793,17 +793,16 @@ namespace KineticValidator
 
                     result.svcName = svcName;
                     success = loader.GetMethodsSafely(out var methodsList);
-                    var m = new Dictionary<string, string[]>();
+                    var m = new Dictionary<string, List<string>>();
                     foreach (var item in methodsList)
                     {
-                        var paramsList = new List<string>();
-                        //paramsList = loader.GetParamsSafely(item);
-                        m.Add(item, paramsList.ToArray());
+                        List<string> paramsList = loader.GetParamsSafely(item);
+                        m.Add(item, paramsList);
 
                         if (item == methodName)
                         {
                             result.methodName = methodName;
-                            result.parameters = paramsList.ToArray();
+                            result.parameters = paramsList;
                         }
                     }
                     _knownServices.Add(svcName, m);
@@ -2805,24 +2804,7 @@ namespace KineticValidator
                     {
                         ProjectName = _projectName,
                         FullFileName = item.FullFileName,
-                        Message = $"REST Service name not defined",
-                        FileType = item.FileType.ToString(),
-                        LineId = item.LineId.ToString(),
-                        JsonPath = item.JsonPath,
-                        ValidationType = ValidationTypeEnum.Logic.ToString(),
-                        Severity = ImportanceEnum.Error.ToString(),
-                        Source = methodName
-                    };
-                    report.Add(reportItem);
-                    continue;
-                }
-                if (svcMethodName == null || string.IsNullOrEmpty(svcMethodName?.Value))
-                {
-                    var reportItem = new ReportItem
-                    {
-                        ProjectName = _projectName,
-                        FullFileName = item.FullFileName,
-                        Message = $"REST Method name not defined",
+                        Message = $"REST service name not defined",
                         FileType = item.FileType.ToString(),
                         LineId = item.LineId.ToString(),
                         JsonPath = item.JsonPath,
@@ -2834,8 +2816,26 @@ namespace KineticValidator
                     continue;
                 }
 
-                if (IsSingleValueCall(serviceName?.Value) || IsSingleValueCall(svcMethodName?.Value))
+                if (IsSingleValueCall(serviceName.Value))
                 {
+                    continue;
+                }
+
+                if (svcMethodName == null || string.IsNullOrEmpty(svcMethodName?.Value))
+                {
+                    var reportItem = new ReportItem
+                    {
+                        ProjectName = _projectName,
+                        FullFileName = item.FullFileName,
+                        Message = $"REST method name not defined",
+                        FileType = item.FileType.ToString(),
+                        LineId = item.LineId.ToString(),
+                        JsonPath = item.JsonPath,
+                        ValidationType = ValidationTypeEnum.Logic.ToString(),
+                        Severity = ImportanceEnum.Error.ToString(),
+                        Source = methodName
+                    };
+                    report.Add(reportItem);
                     continue;
                 }
 
@@ -2856,8 +2856,10 @@ namespace KineticValidator
                         Source = methodName
                     };
                     report.Add(reportItem);
+                    continue;
                 }
-                else if (string.IsNullOrEmpty(serverParams.methodName))
+
+                if (!IsSingleValueCall(svcMethodName.Value) && string.IsNullOrEmpty(serverParams.methodName))
                 {
                     var reportItem = new ReportItem
                     {
@@ -2872,7 +2874,70 @@ namespace KineticValidator
                         Source = methodName
                     };
                     report.Add(reportItem);
+                    continue;
                 }
+
+                if (serverParams.parameters == null) continue;
+
+                var missingParams = new StringBuilder();
+                if (methodParamsList?.Count() > 0)
+                {
+                    foreach (var par in methodParamsList)
+                    {
+                        if (!serverParams.parameters.Contains(par.Value))
+                        {
+                            missingParams.Append(par.Value + ";");
+                        }
+                    }
+
+                    if (missingParams.Length > 0)
+                    {
+                        var reportItem = new ReportItem
+                        {
+                            ProjectName = _projectName,
+                            FullFileName = methodParamsList.FirstOrDefault()?.FullFileName,
+                            Message = $"Incorrect REST method parameter names: {missingParams}",
+                            FileType = methodParamsList.FirstOrDefault()?.FileType.ToString(),
+                            LineId = methodParamsList.FirstOrDefault()?.LineId.ToString(),
+                            JsonPath = methodParamsList.FirstOrDefault()?.ParentPath,
+                            ValidationType = ValidationTypeEnum.Logic.ToString(),
+                            Severity = ImportanceEnum.Error.ToString(),
+                            Source = methodName
+                        };
+                        report.Add(reportItem);
+                    }
+                }
+
+                missingParams = new StringBuilder();
+                if (serverParams.parameters?.Count > 0)
+                {
+                    var methodParamsTmp = methodParamsList.Select(t => t.Value);
+                    foreach (var par in serverParams.parameters.Where(t => t != "ds"))
+                    {
+                        if (!methodParamsTmp.Contains(par))
+                        {
+                            missingParams.Append(par + ";");
+                        }
+                    }
+
+                    if (missingParams.Length > 0)
+                    {
+                        var reportItem = new ReportItem
+                        {
+                            ProjectName = _projectName,
+                            FullFileName = svcMethodName.FullFileName,
+                            Message = $"Missing REST method parameter names: {missingParams}",
+                            FileType = svcMethodName.FileType.ToString(),
+                            LineId = svcMethodName.LineId.ToString(),
+                            JsonPath = svcMethodName.ParentPath + ".methodParameters",
+                            ValidationType = ValidationTypeEnum.Logic.ToString(),
+                            Severity = ImportanceEnum.Error.ToString(),
+                            Source = methodName
+                        };
+                        report.Add(reportItem);
+                    }
+                }
+
             }
             return report;
         }
