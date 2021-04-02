@@ -28,7 +28,7 @@ namespace KineticValidator
         private readonly string[] _initialProjectFiles;
         private readonly string[] _systemMacros;
         private readonly string[] _systemDataViews;
-        private readonly string _serverAssembliesPath;
+        private string _serverAssembliesPath;
 
         private const string FileMask = "*.jsonc";
         private const string SchemaTag = "\"$schema\"";
@@ -242,7 +242,7 @@ namespace KineticValidator
             this.dataGridView_report.SelectionChanged -= new EventHandler(this.DataGridView_report_SelectionChanged);
 
             Settings.Default.ServerAssembliesPath = _serverAssembliesPath;
-            Settings.Default.LastProjectFolder = folderBrowserDialog1.SelectedPath;
+            Settings.Default.LastProjectFolder = _projectPath;
             Settings.Default.IgnoreHttpsError = _ignoreHttpsError;
             Settings.Default.AlwaysOnTop = _alwaysOnTop;
             Settings.Default.SkipSchemaErrors = _skipSchemaErrors;
@@ -292,6 +292,7 @@ namespace KineticValidator
 
         private void Button_selectFiles_Click(object sender, EventArgs e)
         {
+            folderBrowserDialog1.SelectedPath = _projectPath;
             if (folderBrowserDialog1.ShowDialog() == DialogResult.OK &&
                 !string.IsNullOrEmpty(folderBrowserDialog1.SelectedPath))
             {
@@ -790,6 +791,16 @@ namespace KineticValidator
         private void CheckBox_saveReport_CheckedChanged(object sender, EventArgs e)
         {
             _saveReport = checkBox_saveReport.Checked;
+        }
+
+        private void Button_selectAssemblyFolder_Click(object sender, EventArgs e)
+        {
+            folderBrowserDialog1.SelectedPath = _serverAssembliesPath;
+            if (folderBrowserDialog1.ShowDialog() == DialogResult.OK &&
+                !string.IsNullOrEmpty(folderBrowserDialog1.SelectedPath))
+            {
+                _serverAssembliesPath = folderBrowserDialog1.SelectedPath;
+            }
         }
 
         #endregion

@@ -30,7 +30,7 @@ namespace KineticValidator
         private void InitializeComponent()
         {
             this.components = new System.ComponentModel.Container();
-            System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle1 = new System.Windows.Forms.DataGridViewCellStyle();
+            System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle2 = new System.Windows.Forms.DataGridViewCellStyle();
             this.tabControl1 = new System.Windows.Forms.TabControl();
             this.tabPage_DataCollection = new System.Windows.Forms.TabPage();
             this.splitContainer1 = new System.Windows.Forms.SplitContainer();
@@ -44,6 +44,7 @@ namespace KineticValidator
             this.checkBox_alwaysOnTop = new System.Windows.Forms.CheckBox();
             this.checkBox_ignoreHttpsError = new System.Windows.Forms.CheckBox();
             this.button_validateProject = new System.Windows.Forms.Button();
+            this.button_selectAssemblyFolder = new System.Windows.Forms.Button();
             this.button_SelectProject = new System.Windows.Forms.Button();
             this.textBox_logText = new System.Windows.Forms.TextBox();
             this.statusStrip1 = new System.Windows.Forms.StatusStrip();
@@ -107,6 +108,7 @@ namespace KineticValidator
             this.splitContainer1.Panel1.Controls.Add(this.checkBox_alwaysOnTop);
             this.splitContainer1.Panel1.Controls.Add(this.checkBox_ignoreHttpsError);
             this.splitContainer1.Panel1.Controls.Add(this.button_validateProject);
+            this.splitContainer1.Panel1.Controls.Add(this.button_selectAssemblyFolder);
             this.splitContainer1.Panel1.Controls.Add(this.button_SelectProject);
             // 
             // splitContainer1.Panel2
@@ -119,7 +121,7 @@ namespace KineticValidator
             // checkBox_saveReport
             // 
             this.checkBox_saveReport.AutoSize = true;
-            this.checkBox_saveReport.Location = new System.Drawing.Point(0, 206);
+            this.checkBox_saveReport.Location = new System.Drawing.Point(1, 235);
             this.checkBox_saveReport.Name = "checkBox_saveReport";
             this.checkBox_saveReport.Size = new System.Drawing.Size(81, 17);
             this.checkBox_saveReport.TabIndex = 6;
@@ -130,7 +132,7 @@ namespace KineticValidator
             // checkBox_saveFiles
             // 
             this.checkBox_saveFiles.AutoSize = true;
-            this.checkBox_saveFiles.Location = new System.Drawing.Point(0, 229);
+            this.checkBox_saveFiles.Location = new System.Drawing.Point(1, 258);
             this.checkBox_saveFiles.Name = "checkBox_saveFiles";
             this.checkBox_saveFiles.Size = new System.Drawing.Size(96, 17);
             this.checkBox_saveFiles.TabIndex = 5;
@@ -142,7 +144,7 @@ namespace KineticValidator
             // 
             this.button_validateAll.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
-            this.button_validateAll.Location = new System.Drawing.Point(0, 62);
+            this.button_validateAll.Location = new System.Drawing.Point(1, 91);
             this.button_validateAll.Name = "button_validateAll";
             this.button_validateAll.Size = new System.Drawing.Size(343, 23);
             this.button_validateAll.TabIndex = 4;
@@ -153,7 +155,7 @@ namespace KineticValidator
             // checkBox_showPreview
             // 
             this.checkBox_showPreview.AutoSize = true;
-            this.checkBox_showPreview.Location = new System.Drawing.Point(0, 183);
+            this.checkBox_showPreview.Location = new System.Drawing.Point(1, 212);
             this.checkBox_showPreview.Name = "checkBox_showPreview";
             this.checkBox_showPreview.Size = new System.Drawing.Size(93, 17);
             this.checkBox_showPreview.TabIndex = 3;
@@ -168,16 +170,16 @@ namespace KineticValidator
             | System.Windows.Forms.AnchorStyles.Right)));
             this.checkedListBox_validators.CheckOnClick = true;
             this.checkedListBox_validators.FormattingEnabled = true;
-            this.checkedListBox_validators.Location = new System.Drawing.Point(0, 251);
+            this.checkedListBox_validators.Location = new System.Drawing.Point(0, 281);
             this.checkedListBox_validators.Name = "checkedListBox_validators";
-            this.checkedListBox_validators.Size = new System.Drawing.Size(343, 139);
+            this.checkedListBox_validators.Size = new System.Drawing.Size(343, 109);
             this.checkedListBox_validators.TabIndex = 2;
             this.checkedListBox_validators.Leave += new System.EventHandler(this.CheckedListBox_validators_Leave);
             // 
             // checkBox_reformatJson
             // 
             this.checkBox_reformatJson.AutoSize = true;
-            this.checkBox_reformatJson.Location = new System.Drawing.Point(0, 160);
+            this.checkBox_reformatJson.Location = new System.Drawing.Point(1, 189);
             this.checkBox_reformatJson.Name = "checkBox_reformatJson";
             this.checkBox_reformatJson.Size = new System.Drawing.Size(100, 17);
             this.checkBox_reformatJson.TabIndex = 1;
@@ -188,7 +190,7 @@ namespace KineticValidator
             // checkBox_skipSchemaProblems
             // 
             this.checkBox_skipSchemaProblems.AutoSize = true;
-            this.checkBox_skipSchemaProblems.Location = new System.Drawing.Point(0, 137);
+            this.checkBox_skipSchemaProblems.Location = new System.Drawing.Point(1, 166);
             this.checkBox_skipSchemaProblems.Name = "checkBox_skipSchemaProblems";
             this.checkBox_skipSchemaProblems.Size = new System.Drawing.Size(162, 17);
             this.checkBox_skipSchemaProblems.TabIndex = 1;
@@ -199,7 +201,7 @@ namespace KineticValidator
             // checkBox_alwaysOnTop
             // 
             this.checkBox_alwaysOnTop.AutoSize = true;
-            this.checkBox_alwaysOnTop.Location = new System.Drawing.Point(0, 114);
+            this.checkBox_alwaysOnTop.Location = new System.Drawing.Point(1, 143);
             this.checkBox_alwaysOnTop.Name = "checkBox_alwaysOnTop";
             this.checkBox_alwaysOnTop.Size = new System.Drawing.Size(92, 17);
             this.checkBox_alwaysOnTop.TabIndex = 1;
@@ -210,7 +212,7 @@ namespace KineticValidator
             // checkBox_ignoreHttpsError
             // 
             this.checkBox_ignoreHttpsError.AutoSize = true;
-            this.checkBox_ignoreHttpsError.Location = new System.Drawing.Point(0, 91);
+            this.checkBox_ignoreHttpsError.Location = new System.Drawing.Point(1, 120);
             this.checkBox_ignoreHttpsError.Name = "checkBox_ignoreHttpsError";
             this.checkBox_ignoreHttpsError.Size = new System.Drawing.Size(119, 17);
             this.checkBox_ignoreHttpsError.TabIndex = 1;
@@ -223,7 +225,7 @@ namespace KineticValidator
             this.button_validateProject.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
             this.button_validateProject.Enabled = false;
-            this.button_validateProject.Location = new System.Drawing.Point(0, 32);
+            this.button_validateProject.Location = new System.Drawing.Point(1, 61);
             this.button_validateProject.Name = "button_validateProject";
             this.button_validateProject.Size = new System.Drawing.Size(343, 23);
             this.button_validateProject.TabIndex = 0;
@@ -231,11 +233,23 @@ namespace KineticValidator
             this.button_validateProject.UseVisualStyleBackColor = true;
             this.button_validateProject.Click += new System.EventHandler(this.Button_validateProject_Click);
             // 
+            // button_selectAssemblyFolder
+            // 
+            this.button_selectAssemblyFolder.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.button_selectAssemblyFolder.Location = new System.Drawing.Point(1, 3);
+            this.button_selectAssemblyFolder.Name = "button_selectAssemblyFolder";
+            this.button_selectAssemblyFolder.Size = new System.Drawing.Size(343, 23);
+            this.button_selectAssemblyFolder.TabIndex = 0;
+            this.button_selectAssemblyFolder.Text = "Select assembly folder";
+            this.button_selectAssemblyFolder.UseVisualStyleBackColor = true;
+            this.button_selectAssemblyFolder.Click += new System.EventHandler(this.Button_selectAssemblyFolder_Click);
+            // 
             // button_SelectProject
             // 
             this.button_SelectProject.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
-            this.button_SelectProject.Location = new System.Drawing.Point(0, 3);
+            this.button_SelectProject.Location = new System.Drawing.Point(1, 32);
             this.button_SelectProject.Name = "button_SelectProject";
             this.button_SelectProject.Size = new System.Drawing.Size(343, 23);
             this.button_SelectProject.TabIndex = 0;
@@ -286,14 +300,14 @@ namespace KineticValidator
             this.dataGridView_report.AllowUserToOrderColumns = true;
             this.dataGridView_report.ColumnHeadersHeightSizeMode = System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             this.dataGridView_report.ContextMenuStrip = this.contextMenuStrip1;
-            dataGridViewCellStyle1.Alignment = System.Windows.Forms.DataGridViewContentAlignment.MiddleLeft;
-            dataGridViewCellStyle1.BackColor = System.Drawing.SystemColors.Window;
-            dataGridViewCellStyle1.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(204)));
-            dataGridViewCellStyle1.ForeColor = System.Drawing.SystemColors.ControlText;
-            dataGridViewCellStyle1.SelectionBackColor = System.Drawing.SystemColors.Highlight;
-            dataGridViewCellStyle1.SelectionForeColor = System.Drawing.SystemColors.HighlightText;
-            dataGridViewCellStyle1.WrapMode = System.Windows.Forms.DataGridViewTriState.True;
-            this.dataGridView_report.DefaultCellStyle = dataGridViewCellStyle1;
+            dataGridViewCellStyle2.Alignment = System.Windows.Forms.DataGridViewContentAlignment.MiddleLeft;
+            dataGridViewCellStyle2.BackColor = System.Drawing.SystemColors.Window;
+            dataGridViewCellStyle2.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(204)));
+            dataGridViewCellStyle2.ForeColor = System.Drawing.SystemColors.ControlText;
+            dataGridViewCellStyle2.SelectionBackColor = System.Drawing.SystemColors.Highlight;
+            dataGridViewCellStyle2.SelectionForeColor = System.Drawing.SystemColors.HighlightText;
+            dataGridViewCellStyle2.WrapMode = System.Windows.Forms.DataGridViewTriState.True;
+            this.dataGridView_report.DefaultCellStyle = dataGridViewCellStyle2;
             this.dataGridView_report.Dock = System.Windows.Forms.DockStyle.Fill;
             this.dataGridView_report.Location = new System.Drawing.Point(3, 3);
             this.dataGridView_report.Name = "dataGridView_report";
@@ -378,6 +392,7 @@ namespace KineticValidator
         private System.Windows.Forms.Button button_validateAll;
         private System.Windows.Forms.CheckBox checkBox_saveFiles;
         private System.Windows.Forms.CheckBox checkBox_saveReport;
+        private System.Windows.Forms.Button button_selectAssemblyFolder;
     }
 }
 
