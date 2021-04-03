@@ -143,7 +143,6 @@ namespace KineticValidator
         private List<ReportItem> _RunValidationReportsCollection = new List<ReportItem>();
         private List<ReportItem> _DeserializeFileReportsCollection = new List<ReportItem>();
         private List<ReportItem> _ParseJsonObjectReportsCollection = new List<ReportItem>();
-        private List<ReportItem> _reportsCollection = new List<ReportItem>();
         private List<ReportItem> _ignoreReportsCollection = new List<ReportItem>();
 
         // full file name, schema URL
@@ -313,7 +312,7 @@ namespace KineticValidator
             _RunValidationReportsCollection = new List<ReportItem>();
             _DeserializeFileReportsCollection = new List<ReportItem>();
             _ParseJsonObjectReportsCollection = new List<ReportItem>();
-            _reportsCollection = new List<ReportItem>();
+            var reportsCollection = new List<ReportItem>();
             _ignoreReportsCollection = new List<ReportItem>();
             _processedFilesList = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -323,18 +322,14 @@ namespace KineticValidator
                 InitReportsGrid();
                 await Task.Run(() =>
                 {
-                    if (RunValidation(true, _saveTmpFiles))
-                    {
-                        ProcessReport(_reportsCollection, _saveReport, true);
-                    }
+                    reportsCollection = RunValidation(true, _saveTmpFiles);
+                    ProcessReport(reportsCollection, _saveReport, true);
                 }).ConfigureAwait(true);
             }
             else
             {
-                if (RunValidation(true, _saveTmpFiles))
-                {
-                    ProcessReport(_reportsCollection, _saveReport, false);
-                }
+                reportsCollection = RunValidation(true, _saveTmpFiles);
+                ProcessReport(reportsCollection, _saveReport, true);
             }
 
             FlushLog();
@@ -360,6 +355,7 @@ namespace KineticValidator
 
             var collectionFoler = _projectPath;
 
+            var totalReportsCollection = new List<ReportItem>();
             var dirList = new List<string>();
             try
             {
@@ -377,7 +373,7 @@ namespace KineticValidator
                     Severity = ImportanceEnum.Error.ToString(),
                     Source = "Button_validateAll_Click"
                 };
-                _reportsCollection.Add(report);
+                totalReportsCollection.Add(report);
             }
 
             // do not process 'Shared' on deployment folder processing
@@ -387,7 +383,6 @@ namespace KineticValidator
                 dirList.Remove(sharedDir.First());
             }
 
-            var totalReportsCollection = new List<ReportItem>();
             foreach (var dir in dirList)
             {
                 SetProject(dir, false);
@@ -399,27 +394,23 @@ namespace KineticValidator
                 _RunValidationReportsCollection = new List<ReportItem>();
                 _DeserializeFileReportsCollection = new List<ReportItem>();
                 _ParseJsonObjectReportsCollection = new List<ReportItem>();
-                _reportsCollection = new List<ReportItem>();
+                var reportsCollection = new List<ReportItem>();
                 InitValidator(true);
 
                 if (!_runFromCmdLine)
                 {
                     await Task.Run(() =>
                 {
-                    if (RunValidation(false, _saveTmpFiles))
-                    {
-                        ProcessReport(_reportsCollection, _saveReport, false);
-                        totalReportsCollection.AddRange(_reportsCollection);
-                    }
+                    reportsCollection = RunValidation(false, _saveTmpFiles);
+                    ProcessReport(reportsCollection, _saveReport, false);
+                    totalReportsCollection.AddRange(reportsCollection);
                 }).ConfigureAwait(true);
                 }
                 else
                 {
-                    if (RunValidation(false, _saveTmpFiles))
-                    {
-                        ProcessReport(_reportsCollection, _saveReport, false);
-                        totalReportsCollection.AddRange(_reportsCollection);
-                    }
+                    reportsCollection = RunValidation(false, _saveTmpFiles);
+                    ProcessReport(reportsCollection, _saveReport, false);
+                    totalReportsCollection.AddRange(reportsCollection);
                 }
                 FlushLog();
 
@@ -861,7 +852,7 @@ namespace KineticValidator
             Exit();
         }
 
-        private bool RunValidation(bool fullInit, bool saveFile = true)
+        private List<ReportItem> RunValidation(bool fullInit, bool saveFile = true)
         {
             if (Directory.Exists(_projectPath + "\\..\\shared\\")
                 && _projectPath.Contains("\\Deployment\\Server\\Apps\\"))
@@ -948,8 +939,6 @@ namespace KineticValidator
 
             //save complete collections by fileTypes
             var i1 = 1;
-            var totalFiles = _processedFilesList.Count;
-
             if (saveFile)
             {
                 foreach (var item in _fileTypes)
@@ -971,6 +960,8 @@ namespace KineticValidator
             InitValidator(fullInit);
 
             // run every validator selected
+            var reportsCount = 0;
+            var reportsCollection = new List<ReportItem>();
             foreach (var validator in _validatorsList)
             {
                 var validatorMethod = validator.Value.Method.Name;
@@ -980,12 +971,12 @@ namespace KineticValidator
                 SetStatus($"Validating: {validator.Key}");
 
                 var report = validator.Value(validatorMethod);
-                _reportsCollection.AddRange(report);
+                reportsCollection.AddRange(report);
                 FlushLog();
             }
 
-            _textLog.AppendLine($"{_projectName} files validated: {totalFiles}");
-            return true;
+            _textLog.AppendLine($"{_projectName} files validated: {_processedFilesList.Count}, issues found: {reportsCollection.Count}");
+            return reportsCollection;
         }
 
         private void ProcessReport(List<ReportItem> reports, bool saveFile = true, bool updateTable = true)
@@ -1554,8 +1545,8 @@ namespace KineticValidator
                     var reportFileName = _projectName + "\\" + ReportJsonFileName;
                     if (File.Exists(reportFileName))
                     {
-                        _reportsCollection = JsonIo.LoadJson<ReportItem>(reportFileName);
-                        foreach (var reportLine in _reportsCollection)
+                        var reportsCollection = JsonIo.LoadJson<ReportItem>(reportFileName);
+                        foreach (var reportLine in reportsCollection)
                         {
                             var newRow = _reportTable.NewRow();
                             newRow[ReportColumns.ProjectName.ToString()] = reportLine.ProjectName;

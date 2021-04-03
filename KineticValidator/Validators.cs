@@ -89,7 +89,8 @@ namespace KineticValidator
 
             public List<string> GetParamsSafely(string methodName)
             {
-                if (_noServiceModel) return null;
+                if (_noServiceModel)
+                    return null;
 
                 List<string> paramList = null;
 
@@ -393,9 +394,15 @@ namespace KineticValidator
             return patchList;
         }
 
-        private static bool IsSingleValueCall(string field)
+        private static bool IsTableField(string field)
         {
             Regex regex = new Regex(@"^{+\w+[.]+\w+}$");
+            return regex.Match(field).Success;
+        }
+
+        private static bool IsPatch(string field)
+        {
+            Regex regex = new Regex(@"^%+\w+%$");
             return regex.Match(field).Success;
         }
 
@@ -1231,7 +1238,7 @@ namespace KineticValidator
                     && n.FileType == JsoncContentType.Events
                     && n.Name == "message"
                     && !n.Value.Contains("{{strings.")
-                    && !IsSingleValueCall(n.Value));
+                    && !IsTableField(n.Value));
 
             var report = new List<ReportItem>();
             foreach (var field in stringsList)
@@ -2820,7 +2827,32 @@ namespace KineticValidator
                     continue;
                 }
 
-                if (IsSingleValueCall(serviceName.Value))
+                if (IsPatch(serviceName.Value) || IsTableField(serviceName.Value))
+                {
+                    continue;
+                }
+
+                var serverParams = GetRestCallParams(serviceName.Value, svcMethodName.Value, _serverAssembliesPath);
+
+                if (string.IsNullOrEmpty(serverParams.svcName))
+                {
+                    var reportItem = new ReportItem
+                    {
+                        ProjectName = _projectName,
+                        FullFileName = serviceName.FullFileName,
+                        Message = $"Incorrect REST service name: {serviceName.Value}",
+                        FileType = serviceName.FileType.ToString(),
+                        LineId = serviceName.LineId.ToString(),
+                        JsonPath = serviceName.JsonPath,
+                        ValidationType = ValidationTypeEnum.Logic.ToString(),
+                        Severity = ImportanceEnum.Error.ToString(),
+                        Source = methodName
+                    };
+                    report.Add(reportItem);
+                    continue;
+                }
+
+                if (IsPatch(svcMethodName.Value) || IsTableField(svcMethodName.Value))
                 {
                     continue;
                 }
@@ -2843,33 +2875,13 @@ namespace KineticValidator
                     continue;
                 }
 
-                var serverParams = GetRestCallParams(serviceName.Value, svcMethodName.Value, _serverAssembliesPath);
-
-                if (string.IsNullOrEmpty(serverParams.svcName))
-                {
-                    var reportItem = new ReportItem
-                    {
-                        ProjectName = _projectName,
-                        FullFileName = serviceName.FullFileName,
-                        Message = $"Incorrect REST service name: {serviceName}",
-                        FileType = serviceName.FileType.ToString(),
-                        LineId = serviceName.LineId.ToString(),
-                        JsonPath = serviceName.JsonPath,
-                        ValidationType = ValidationTypeEnum.Logic.ToString(),
-                        Severity = ImportanceEnum.Error.ToString(),
-                        Source = methodName
-                    };
-                    report.Add(reportItem);
-                    continue;
-                }
-
-                if (!IsSingleValueCall(svcMethodName.Value) && string.IsNullOrEmpty(serverParams.methodName))
+                if (string.IsNullOrEmpty(serverParams.methodName))
                 {
                     var reportItem = new ReportItem
                     {
                         ProjectName = _projectName,
                         FullFileName = svcMethodName.FullFileName,
-                        Message = $"Incorrect REST method name: {svcMethodName.Value}",
+                        Message = $"Incorrect REST service '{serviceName.Value}' method name: {svcMethodName.Value}",
                         FileType = svcMethodName.FileType.ToString(),
                         LineId = svcMethodName.LineId.ToString(),
                         JsonPath = svcMethodName.JsonPath,
@@ -2888,7 +2900,7 @@ namespace KineticValidator
                     {
                         ProjectName = _projectName,
                         FullFileName = svcMethodName.FullFileName,
-                        Message = $"Failed to retrieve REST method parameters (Epicor.ServiceMode.dll not found?)",
+                        Message = $"Failed to retrieve REST service '{serviceName.Value}' method '{svcMethodName.Value}' parameters (Epicor.ServiceMode.dll not found?)",
                         FileType = svcMethodName.FileType.ToString(),
                         LineId = svcMethodName.LineId.ToString(),
                         JsonPath = svcMethodName.ParentPath,
@@ -2918,7 +2930,7 @@ namespace KineticValidator
                         {
                             ProjectName = _projectName,
                             FullFileName = methodParamsList.FirstOrDefault()?.FullFileName,
-                            Message = $"Incorrect REST method parameter names: {missingParams}",
+                            Message = $"Incorrect REST service '{serviceName.Value}' method '{svcMethodName.Value}' parameter names: {missingParams}",
                             FileType = methodParamsList.FirstOrDefault()?.FileType.ToString(),
                             LineId = methodParamsList.FirstOrDefault()?.LineId.ToString(),
                             JsonPath = methodParamsList.FirstOrDefault()?.ParentPath,
@@ -2948,7 +2960,7 @@ namespace KineticValidator
                         {
                             ProjectName = _projectName,
                             FullFileName = svcMethodName.FullFileName,
-                            Message = $"Missing REST method parameter names: {missingParams}",
+                            Message = $"Missing REST service '{serviceName.Value}' method '{svcMethodName.Value}' parameter names: {missingParams}",
                             FileType = svcMethodName.FileType.ToString(),
                             LineId = svcMethodName.LineId.ToString(),
                             JsonPath = svcMethodName.ParentPath + ".methodParameters",
