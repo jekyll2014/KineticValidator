@@ -57,9 +57,18 @@ namespace KineticValidator
                 return true;
             }
 
-            public bool GetMethodsSafely(out List<string> methodsList)
+            public List<string> GetMethodsSafely(string svcName, string assemblyPath)
             {
-                methodsList = new List<string>();
+                if (assembly == null)
+                {
+                    var result = LoadAssembly(svcName, assemblyPath);
+                    if (!result)
+                    {
+                        return null;
+                    }
+                }
+
+                var methodsList = new List<string>();
 
                 Type[] typesSafely;
                 try
@@ -81,16 +90,25 @@ namespace KineticValidator
                 }
                 catch (Exception ex)
                 {
-
+                    methodsList = null;
                 }
 
-                return true;
+                return methodsList;
             }
 
-            public List<string> GetParamsSafely(string methodName)
+            public List<string> GetParamsSafely(string svcName, string methodName, string assemblyPath)
             {
                 if (_noServiceModel)
                     return null;
+
+                if (assembly == null)
+                {
+                    var result = LoadAssembly(svcName, assemblyPath);
+                    if (!result)
+                    {
+                        return null;
+                    }
+                }
 
                 List<string> paramList = null;
 
@@ -113,6 +131,7 @@ namespace KineticValidator
                         try
                         {
                             ParameterInfo[] parameters = method.GetParameters();
+                            paramList = new List<string>();
                             paramList = parameters.Where(t => !t.IsOut).Select(t => t.Name).ToList();
                         }
                         catch (Exception ex1)
@@ -266,7 +285,7 @@ namespace KineticValidator
             public int number;
         }
 
-        private static List<string> GetValueCall(string field)
+        private static List<string> GetTableField(string field)
         {
             var valueList = new List<string>();
             if (string.IsNullOrEmpty(field))
@@ -343,7 +362,7 @@ namespace KineticValidator
             return c;
         }
 
-        private static List<string> GetPatchMacros(string field)
+        private static List<string> GetPatchList(string field)
         {
             var patchList = new List<string>();
             if (string.IsNullOrEmpty(field))
@@ -370,11 +389,11 @@ namespace KineticValidator
                                 var newPatch = token.Substring(pos1, pos2 - pos1 + 1);
                                 if (newPatch.IndexOf(tokenEmbracementChar, 1, newPatch.Length - 2) >= 0)
                                 {
-                                    // stack overflow comes on "%%patch%%" processing. Easy way to handle.
+                                    // stack overflow comes on "%%patch%" processing. Easy way to handle.
                                     if (newPatch.StartsWith("%%") && newPatch.EndsWith("%"))
                                         pos1 = pos2 + 1;
                                     else
-                                        patchList.AddRange(GetPatchMacros(newPatch));
+                                        patchList.AddRange(GetPatchList(newPatch));
                                 }
                                 else
                                 {
@@ -394,6 +413,12 @@ namespace KineticValidator
             return patchList;
         }
 
+        private static string GetParentName(string parentPath)
+        {
+            var i = parentPath.LastIndexOf('.');
+            return parentPath.Substring(i + 1);
+        }
+
         private static bool IsTableField(string field)
         {
             Regex regex = new Regex(@"^{+\w+[.]+\w+}$");
@@ -404,6 +429,19 @@ namespace KineticValidator
         {
             Regex regex = new Regex(@"^%+\w+%$");
             return regex.Match(field).Success;
+        }
+
+        private static bool HasJsCode(string field)
+        {
+            return field.Contains("#_") && field.Contains("_#");
+        }
+
+        private static bool HasJsDvCount(string field)
+        {
+            //"#_*trans.dataView(*).count*_#"
+            //Regex regex = new Regex(@"^#_+[\s\S\w]+rans.dataView\(+[\s\w]+\).count+[\s\S\w]_#$");
+            //return regex.Match(field).Success;
+            return field.Contains("trans.dataView(") && field.Contains(").count");
         }
 
         private static async Task<List<ReportItem>> ValidateFileSchema(string _projectName, string fullFileName, string schemaUrl = "")
@@ -790,7 +828,7 @@ namespace KineticValidator
                 var domain = AppDomain.CreateDomain(nameof(AssemblyLoader), AppDomain.CurrentDomain.Evidence, new AppDomainSetup
                 {
                     ApplicationBase = Path.GetDirectoryName(typeof(AssemblyLoader).Assembly.Location),
-                    //PrivateBinPath = assemblyPath+"\\..\\Bin"
+                    PrivateBinPath = assemblyPath + "\\..\\Bin",
                 });
                 try
                 {
@@ -803,11 +841,11 @@ namespace KineticValidator
                     }
 
                     result.svcName = svcName;
-                    success = loader.GetMethodsSafely(out var methodsList);
+                    var methodsList = loader.GetMethodsSafely(svcName, assemblyPath);
                     var m = new Dictionary<string, List<string>>();
                     foreach (var item in methodsList)
                     {
-                        List<string> paramsList = loader.GetParamsSafely(item);
+                        List<string> paramsList = loader.GetParamsSafely(svcName, item, assemblyPath);
                         m.Add(item, paramsList);
 
                         if (item == methodName)
@@ -1159,7 +1197,7 @@ namespace KineticValidator
             var report = new List<ReportItem>();
             foreach (var field in fieldsList)
             {
-                var strList = GetValueCall(field.Value);
+                var strList = GetTableField(field.Value);
                 foreach (var str in strList)
                     if (!string.IsNullOrEmpty(str)
                         && str.StartsWith("strings.")
@@ -1779,7 +1817,7 @@ namespace KineticValidator
                 if (property.ItemType != JsonItemType.Property)
                     continue;
 
-                var usedPatchList = GetPatchMacros(property.Value);
+                var usedPatchList = GetPatchList(property.Value);
                 foreach (var patchItem in usedPatchList)
                 {
                     if (string.IsNullOrEmpty(patchItem))
@@ -1972,7 +2010,7 @@ namespace KineticValidator
                             && m.Name == "type"
                             && m.Value == "EpBinding"))
                 {
-                    usedDataViewsList = GetValueCall(property.Value);
+                    usedDataViewsList = GetTableField(property.Value);
                 }
                 else if (property.FileType == JsoncContentType.Events
                          && property.Parent == "trigger"
@@ -1991,13 +2029,13 @@ namespace KineticValidator
                 else if (property.Name == "epBinding" && !string.IsNullOrEmpty(property.Value))
                 {
                     if (property.Value.Contains('.'))
-                        usedDataViewsList = GetValueCall(property.Value);
+                        usedDataViewsList = GetTableField(property.Value);
                     else
                         usedDataViewsList.Add(property.Value + ".");
                 }
                 else if (!string.IsNullOrEmpty(property.Value))
                 {
-                    usedDataViewsList = GetValueCall(property.Value);
+                    usedDataViewsList = GetTableField(property.Value);
                 }
 
                 foreach (var dataViewItem in usedDataViewsList)
@@ -2495,7 +2533,7 @@ namespace KineticValidator
                 .Where(n =>
                     !n.Shared
                     && n.ItemType == JsonItemType.Property
-                    && n.Value.Contains("#_"));
+                    && HasJsCode(n.Value));
 
             var report = new List<ReportItem>();
             foreach (var dup in jsPatternsList)
@@ -2523,8 +2561,8 @@ namespace KineticValidator
                 .Where(n =>
                     !n.Shared
                     && n.ItemType == JsonItemType.Property
-                    && n.Value.Contains("#_trans.dataView(")
-                    && n.Value.Contains(").count"));
+                    && HasJsCode(n.Value)
+                    && HasJsDvCount(n.Value));
 
             var report = new List<ReportItem>();
             foreach (var dup in jsPatternsList)
@@ -2806,8 +2844,11 @@ namespace KineticValidator
                        && n.FullFileName == item.FullFileName
                        && n.ItemType == JsonItemType.Property
                        && n.FileType == JsoncContentType.Events
+                       && ((!GetParentName(n.ParentPath).StartsWith("params[")
                        && n.JsonPath.StartsWith(item.ParentPath + ".param.methodParameters")
-                       && n.Name == "field");
+                       && n.Name == "field")
+                       || (n.JsonPath.StartsWith(item.ParentPath + ".param.erpRestPostArgs")
+                       && n.Name == "paramPath")));
 
                 if (serviceName == null || string.IsNullOrEmpty(serviceName.Value))
                 {
@@ -2827,7 +2868,7 @@ namespace KineticValidator
                     continue;
                 }
 
-                if (IsPatch(serviceName.Value) || IsTableField(serviceName.Value))
+                if (IsPatch(serviceName.Value) || IsTableField(serviceName.Value) || HasJsCode(serviceName.Value))
                 {
                     continue;
                 }
@@ -2839,7 +2880,7 @@ namespace KineticValidator
                     var reportItem = new ReportItem
                     {
                         ProjectName = _projectName,
-                        FullFileName = serviceName.FullFileName,
+                        FullFileName = item.FullFileName,
                         Message = $"Incorrect REST service name: {serviceName.Value}",
                         FileType = serviceName.FileType.ToString(),
                         LineId = serviceName.LineId.ToString(),
@@ -2852,7 +2893,7 @@ namespace KineticValidator
                     continue;
                 }
 
-                if (IsPatch(svcMethodName.Value) || IsTableField(svcMethodName.Value))
+                if (IsPatch(svcMethodName.Value) || IsTableField(svcMethodName.Value) || HasJsCode(svcMethodName.Value))
                 {
                     continue;
                 }
@@ -2880,7 +2921,7 @@ namespace KineticValidator
                     var reportItem = new ReportItem
                     {
                         ProjectName = _projectName,
-                        FullFileName = svcMethodName.FullFileName,
+                        FullFileName = item.FullFileName,
                         Message = $"Incorrect REST service '{serviceName.Value}' method name: {svcMethodName.Value}",
                         FileType = svcMethodName.FileType.ToString(),
                         LineId = svcMethodName.LineId.ToString(),
@@ -2899,7 +2940,7 @@ namespace KineticValidator
                     var reportItem = new ReportItem
                     {
                         ProjectName = _projectName,
-                        FullFileName = svcMethodName.FullFileName,
+                        FullFileName = item.FullFileName,
                         Message = $"Failed to retrieve REST service '{serviceName.Value}' method '{svcMethodName.Value}' parameters (Epicor.ServiceMode.dll not found?)",
                         FileType = svcMethodName.FileType.ToString(),
                         LineId = svcMethodName.LineId.ToString(),
@@ -2918,9 +2959,12 @@ namespace KineticValidator
                 {
                     foreach (var par in methodParamsList)
                     {
+                        if (IsPatch(par.Value) || IsTableField(par.Value) || HasJsCode(par.Value))
+                            continue;
+
                         if (!serverParams.parameters.Contains(par.Value))
                         {
-                            missingParams.Append(par.Value + ";");
+                            missingParams.Append(par.Value + ", ");
                         }
                     }
 
@@ -2929,7 +2973,7 @@ namespace KineticValidator
                         var reportItem = new ReportItem
                         {
                             ProjectName = _projectName,
-                            FullFileName = methodParamsList.FirstOrDefault()?.FullFileName,
+                            FullFileName = item.FullFileName,
                             Message = $"Incorrect REST service '{serviceName.Value}' method '{svcMethodName.Value}' parameter names: {missingParams}",
                             FileType = methodParamsList.FirstOrDefault()?.FileType.ToString(),
                             LineId = methodParamsList.FirstOrDefault()?.LineId.ToString(),
@@ -2950,7 +2994,7 @@ namespace KineticValidator
                     {
                         if (!methodParamsTmp.Contains(par))
                         {
-                            missingParams.Append(par + ";");
+                            missingParams.Append(par + ", ");
                         }
                     }
 
@@ -2959,7 +3003,7 @@ namespace KineticValidator
                         var reportItem = new ReportItem
                         {
                             ProjectName = _projectName,
-                            FullFileName = svcMethodName.FullFileName,
+                            FullFileName = item.FullFileName,
                             Message = $"Missing REST service '{serviceName.Value}' method '{svcMethodName.Value}' parameter names: {missingParams}",
                             FileType = svcMethodName.FileType.ToString(),
                             LineId = svcMethodName.LineId.ToString(),
