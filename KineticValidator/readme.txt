@@ -42,7 +42,8 @@ Validations implemented:
 	39) Missing layout id's - any layouts not having the "model.id" or "model.id" different from control "id"
 	40) Incorrect layout id's - any layouts having "model.id" different from control "id"
 	41) Incorrect dataview-condition - "dataview-condition" method must have different values for "dataview" and "result" properties otherwise dataview data could be corrupted.
-	42) Incorrect tab links - to detect inexistent tab id's (broken by AppStudio). Not very reliable - false alarms on slideouts.
+	42) Incorrect tab links - to detect inexistent tab id's (broken by AppStudio). Not very reliable - false alarms on slide-outs.
+	43) Incorrect REST calls - to detect inconsistent RES calls. Available services/methods/parameters are taken from Server\Assemblies folder *.Contract*.dll files. Need to have some dependent DLL's in program or Assemblies folder to get parameters list for the methods (service and methods works well without). See 'Tech notes'.
 
 	It is possible to select root projects folder to run mass-validation. Note that it tries to find a project in only one sub-folder level.
 	Program also tries to load report from \program_folder\project_folder\ on project folder selection. This is a previous run folder and the report can be outdated.
@@ -76,5 +77,9 @@ Tech. notes:
 	- Right click brings up menu to delete unwanted row from report table or add it to project ignore list.
 	- Entity collections saved into \program_folder\project_folder\*.txt and *.json files (basically the same we get in \Cache). One can check what program has collected to analyze. *.txt also used to show error in the text editor by "LineId".
 	- Program can be run from command line (see /h for help). Settings by default are taken from .config, so it's possible to run GUI to setup it once.
-
+	- REST call validation may need the following DLL's to have in the program folder:
+		Epicor.ServiceModel.dll
+		Erp.Contracts.BO.JobEntry.dll
+		Ice.Contracts.Lib.ClassAttribute.dll
+		...and the above list can be changed due to a dependency changes.
 P.S. Program is not displaying any text on the screen now in command line mode as I don't know how to manage both cmd.line and GUI mode in one executable - it has nagging black window if I set cmdline or no console output in GUI mode. Console output not displayed but still available to redirect into the file (like "KineticValidator.exe /? > help.txt").

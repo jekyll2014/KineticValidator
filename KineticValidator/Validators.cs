@@ -24,26 +24,10 @@ namespace KineticValidator
 
             public bool LoadAssembly(string svcName, string assemblyPath)
             {
-                var nameTokens = svcName.ToUpper().Split('.');
-                if (nameTokens.Length != 3)
-                {
-                    return false;
-                }
+                var fileName = GetAssemblyContractName(svcName);
 
-                // 1st token must be ["ERP","ICE"]
-                if (!new string[] { "ERP", "ICE" }.Contains(nameTokens[0]))
-                {
+                if (string.IsNullOrEmpty(fileName))
                     return false;
-                }
-
-                // 2nd token must be ["BO,"LIB","PROC","RPT","SEC","WEB"]
-                if (!new string[] { "BO", "LIB", "PROC", "RPT", "SEC", "WEB" }.Contains(nameTokens[1]))
-                {
-                    return false;
-                }
-
-                nameTokens[2] = nameTokens[2].Replace("SVC", "");
-                var fileName = nameTokens[0] + ".Contracts." + nameTokens[1] + "." + nameTokens[2] + ".dll";
 
                 try
                 {
@@ -57,9 +41,37 @@ namespace KineticValidator
                 return true;
             }
 
+            private string GetAssemblyContractName(string svcName)
+            {
+                var fileName = "";
+                var nameTokens = svcName.ToUpper().Split('.');
+                if (nameTokens.Length != 3)
+                {
+                    return fileName;
+                }
+
+                // 1st token must be ["ERP","ICE"]
+                if (!new string[] { "ERP", "ICE" }.Contains(nameTokens[0]))
+                {
+                    return fileName;
+                }
+
+                // 2nd token must be ["BO,"LIB","PROC","RPT","SEC","WEB"]
+                if (!new string[] { "BO", "LIB", "PROC", "RPT", "SEC", "WEB" }.Contains(nameTokens[1]))
+                {
+                    return fileName;
+                }
+
+                nameTokens[2] = nameTokens[2].Replace("SVC", "");
+                fileName = nameTokens[0] + ".Contracts." + nameTokens[1] + "." + nameTokens[2] + ".dll";
+
+                return fileName;
+            }
+
             public List<string> GetMethodsSafely(string svcName, string assemblyPath)
             {
-                if (assembly == null)
+                var contractName = GetAssemblyContractName(svcName);
+                if (assembly == null || !assembly.GetName().Name.Equals(contractName, StringComparison.OrdinalIgnoreCase))
                 {
                     var result = LoadAssembly(svcName, assemblyPath);
                     if (!result)
@@ -101,7 +113,11 @@ namespace KineticValidator
                 if (_noServiceModel)
                     return null;
 
-                if (assembly == null)
+                var contractName = GetAssemblyContractName(svcName);
+                if (string.IsNullOrEmpty(contractName))
+                    return null;
+
+                if (assembly == null || !assembly.GetName().Name.Equals(contractName, StringComparison.OrdinalIgnoreCase))
                 {
                     var result = LoadAssembly(svcName, assemblyPath);
                     if (!result)
@@ -224,12 +240,14 @@ namespace KineticValidator
             {"Incorrect REST calls", IncorrectRestCalls},
         };
 
-        //cashed data
+        //cached data
         private static Dictionary<string, string> _patchValues;
-        private static Dictionary<string, string> _schemaList;
         private static Dictionary<string, List<ParsedProperty>> _parsedFiles;
-        private static Dictionary<string, Dictionary<string, List<string>>> _knownServices;
         private static bool _noServiceModel;
+
+        //global cache
+        private static Dictionary<string, string> _schemaList = new Dictionary<string, string>();
+        private static Dictionary<string, Dictionary<string, List<string>>> _knownServices = new Dictionary<string, Dictionary<string, List<string>>>();
 
         internal static void Initialize(ProcessConfiguration processConfiguration, ProjectConfiguration projectConfiguration, SeedData seedData, bool clearCashe)
         {
@@ -269,10 +287,11 @@ namespace KineticValidator
 
             if (clearCashe)
             {
-                _schemaList = new Dictionary<string, string>();
                 _parsedFiles = new Dictionary<string, List<ParsedProperty>>();
-                _knownServices = new Dictionary<string, Dictionary<string, List<string>>>();
                 _noServiceModel = false;
+
+                //_schemaList = new Dictionary<string, string>();
+                //_knownServices = new Dictionary<string, Dictionary<string, List<string>>>();
             }
         }
 
