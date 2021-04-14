@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -16,152 +17,163 @@ using static KineticValidator.JsonPathParser;
 
 namespace KineticValidator
 {
-    public static class ProjectValidator
+    public class AssemblyLoader : MarshalByRefObject
     {
-        private class AssemblyLoader : MarshalByRefObject
+        private Assembly assembly = null;
+
+        public bool LoadAssembly(string svcName, string assemblyPath)
         {
-            private Assembly assembly = null;
+            var fileName = GetAssemblyContractName(svcName);
 
-            public bool LoadAssembly(string svcName, string assemblyPath)
+            if (string.IsNullOrEmpty(fileName))
             {
-                var fileName = GetAssemblyContractName(svcName);
-
-                if (string.IsNullOrEmpty(fileName))
-                    return false;
-
-                try
-                {
-                    this.assembly = Assembly.LoadFile(assemblyPath + "\\" + fileName);
-                }
-                catch
-                {
-                    return false;
-                }
-
-                return true;
+                return false;
             }
 
-            private string GetAssemblyContractName(string svcName)
+            try
             {
-                var fileName = "";
-                var nameTokens = svcName.ToUpper().Split('.');
-                if (nameTokens.Length != 3)
-                {
-                    return fileName;
-                }
+                this.assembly = Assembly.LoadFile(assemblyPath + "\\" + fileName);
+            }
+            catch
+            {
+                return false;
+            }
 
-                // 1st token must be ["ERP","ICE"]
-                if (!new string[] { "ERP", "ICE" }.Contains(nameTokens[0]))
-                {
-                    return fileName;
-                }
+            return true;
+        }
 
-                // 2nd token must be ["BO,"LIB","PROC","RPT","SEC","WEB"]
-                if (!new string[] { "BO", "LIB", "PROC", "RPT", "SEC", "WEB" }.Contains(nameTokens[1]))
-                {
-                    return fileName;
-                }
-
-                nameTokens[2] = nameTokens[2].Replace("SVC", "");
-                fileName = nameTokens[0] + ".Contracts." + nameTokens[1] + "." + nameTokens[2] + ".dll";
-
+        private string GetAssemblyContractName(string svcName)
+        {
+            var fileName = "";
+            var nameTokens = svcName.ToUpper().Split('.');
+            if (nameTokens.Length != 3)
+            {
                 return fileName;
             }
 
-            public List<string> GetMethodsSafely(string svcName, string assemblyPath)
+            // 1st token must be ["ERP","ICE"]
+            if (!new string[] { "ERP", "ICE" }.Contains(nameTokens[0]))
             {
-                var contractName = GetAssemblyContractName(svcName);
-                if (assembly == null || !assembly.GetName().Name.Equals(contractName, StringComparison.OrdinalIgnoreCase))
-                {
-                    var result = LoadAssembly(svcName, assemblyPath);
-                    if (!result)
-                    {
-                        return null;
-                    }
-                }
-
-                var methodsList = new List<string>();
-
-                Type[] typesSafely;
-                try
-                {
-                    typesSafely = this.assembly.GetTypes().Where(t => t != null && t.Name.EndsWith("SvcContract") && t.IsPublic).ToArray();
-                }
-                catch (ReflectionTypeLoadException ex)
-                {
-                    typesSafely = ex.Types.Where(t => t != null && t.Name.EndsWith("SvcContract") && t.IsPublic).ToArray();
-                }
-
-                try
-                {
-                    foreach (var type in typesSafely)
-                    {
-                        var methods = type.GetMethods();
-                        methodsList.AddRange(methods.Select(t => t.Name).ToList());
-                    }
-                }
-                catch (Exception ex)
-                {
-                    methodsList = null;
-                }
-
-                return methodsList;
+                return fileName;
             }
 
-            public List<string> GetParamsSafely(string svcName, string methodName, string assemblyPath)
+            // 2nd token must be ["BO,"LIB","PROC","RPT","SEC","WEB"]
+            if (!new string[] { "BO", "LIB", "PROC", "RPT", "SEC", "WEB" }.Contains(nameTokens[1]))
             {
-                if (_noServiceModel)
+                return fileName;
+            }
+
+            nameTokens[2] = nameTokens[2].Replace("SVC", "");
+            fileName = nameTokens[0] + ".Contracts." + nameTokens[1] + "." + nameTokens[2] + ".dll";
+
+            return fileName;
+        }
+
+        public List<string> GetMethodsSafely(string svcName, string assemblyPath)
+        {
+            var contractName = GetAssemblyContractName(svcName);
+            if (assembly == null || !assembly.GetName().Name.Equals(contractName, StringComparison.OrdinalIgnoreCase))
+            {
+                var result = LoadAssembly(svcName, assemblyPath);
+                if (!result)
+                {
                     return null;
-
-                var contractName = GetAssemblyContractName(svcName);
-                if (string.IsNullOrEmpty(contractName))
-                    return null;
-
-                if (assembly == null || !assembly.GetName().Name.Equals(contractName, StringComparison.OrdinalIgnoreCase))
-                {
-                    var result = LoadAssembly(svcName, assemblyPath);
-                    if (!result)
-                    {
-                        return null;
-                    }
                 }
+            }
 
-                List<string> paramList = null;
+            var methodsList = new List<string>();
 
-                MethodInfo method = null;
-                IEnumerable<Type> typesSafely;
-                try
+            Type[] typesSafely;
+            try
+            {
+                typesSafely = this.assembly.GetTypes().Where(t => t != null && t.Name.EndsWith("SvcContract") && t.IsPublic).ToArray();
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                typesSafely = ex.Types.Where(t => t != null && t.Name.EndsWith("SvcContract") && t.IsPublic).ToArray();
+                foreach (var lException in ex.LoaderExceptions)
                 {
-                    typesSafely = this.assembly.GetTypes().Where(t => t.Name.EndsWith("SvcContract") && t.IsPublic);
+                    Utilities.SaveDevLog(lException.Message + Environment.NewLine);
                 }
-                catch (ReflectionTypeLoadException ex)
-                {
-                    typesSafely = ex.Types.Where(t => t != null && t.Name.EndsWith("SvcContract") && t.IsPublic);
-                }
+            }
 
+            try
+            {
                 foreach (var type in typesSafely)
                 {
-                    method = type.GetMethod(methodName);
-                    if (method != null)
-                    {
-                        try
-                        {
-                            ParameterInfo[] parameters = method.GetParameters();
-                            paramList = new List<string>();
-                            paramList = parameters.Where(t => !t.IsOut).Select(t => t.Name).ToList();
-                        }
-                        catch (Exception ex1)
-                        {
-                            _noServiceModel = true;
-                        }
-
-                        break;
-                    }
+                    var methods = type.GetMethods();
+                    methodsList.AddRange(methods.Select(t => t.Name).ToList());
                 }
-
-                return paramList;
             }
+            catch (Exception ex)
+            {
+                methodsList = null;
+                Utilities.SaveDevLog(ex.Message);
+            }
+
+            return methodsList;
         }
+
+        public List<string> GetParamsSafely(string svcName, string methodName, string assemblyPath)
+        {
+            var contractName = GetAssemblyContractName(svcName);
+            if (string.IsNullOrEmpty(contractName))
+            {
+                return null;
+            }
+
+            if (assembly == null || !assembly.GetName().Name.Equals(contractName, StringComparison.OrdinalIgnoreCase))
+            {
+                var result = LoadAssembly(svcName, assemblyPath);
+                if (!result)
+                {
+                    return null;
+                }
+            }
+
+            List<string> paramList = null;
+
+            MethodInfo method = null;
+            IEnumerable<Type> typesSafely;
+            try
+            {
+                typesSafely = this.assembly.GetTypes().Where(t => t.Name.EndsWith("SvcContract") && t.IsPublic);
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                typesSafely = ex.Types.Where(t => t != null && t.Name.EndsWith("SvcContract") && t.IsPublic);
+                foreach (var lException in ex.LoaderExceptions)
+                {
+                    Utilities.SaveDevLog(lException.Message + Environment.NewLine);
+                }
+            }
+
+            foreach (var type in typesSafely)
+            {
+                method = type.GetMethod(methodName);
+                if (method != null)
+                {
+                    try
+                    {
+                        ParameterInfo[] parameters = method.GetParameters();
+                        paramList = new List<string>();
+                        paramList = parameters.Where(t => !t.IsOut).Select(t => t.Name).ToList();
+                    }
+                    catch (Exception ex)
+                    {
+                        Utilities.SaveDevLog(ex.Message);
+                    }
+
+                    break;
+                }
+            }
+
+            return paramList;
+        }
+    }
+
+    public static class ProjectValidator
+    {
 
         //constants from caller
         private static char _splitChar;
@@ -169,16 +181,17 @@ namespace KineticValidator
         private static string _backupSchemaExtension;
         private static string _fileMask;
         private static string _serverAssembliesPath;
-        private static List<ContentTypeItem> _fileTypes;
+        private static IEnumerable<ContentTypeItem> _fileTypes;
 
         //setting flags from UI
         private static bool _ignoreHttpsError;
         private static bool _skipSchemaErrors;
+        private static bool _patchAllFields;
 
         //settings from .config
         private static string[] _systemMacros;
         private static string[] _systemDataViews;
-        private static List<ValidationErrorKind> _suppressSchemaErrors;
+        private static IEnumerable<ValidationErrorKind> _suppressSchemaErrors;
 
         //project folder related settings
         private static string _projectName;
@@ -186,70 +199,78 @@ namespace KineticValidator
         private static FolderType _folderType;
 
         //only set
-        private static Dictionary<string, string> _processedFilesList;
-        private static List<JsonProperty> _jsonPropertiesCollection;
-        private static List<ReportItem> _RunValidationReportsCollection;
-        private static List<ReportItem> _DeserializeFileReportsCollection;
-        private static List<ReportItem> _ParseJsonObjectReportsCollection;
+        private static ConcurrentDictionary<string, string> _processedFilesList;
+        private static IEnumerable<JsonProperty> _jsonPropertiesCollection;
+        private static IEnumerable<ReportItem> _RunValidationReportsCollection;
+        private static IEnumerable<ReportItem> _DeserializeFileReportsCollection;
+        private static IEnumerable<ReportItem> _ParseJsonObjectReportsCollection;
 
         //only get
-        internal static Dictionary<string, Func<string, List<ReportItem>>> _validatorsList { get; } = new Dictionary<string, Func<string, List<ReportItem>>>
-        {
-            {"File list validation", RunValidation},
-            {"Serialization validation", DeserializeFile},
-            {"JSON parser validation", ParseJsonObject},
-            {"Schema validation", SchemaValidation},
-            {"Redundant files", RedundantFiles},
-            {"National characters", ValidateFileChars},
-            {"Duplicate JSON property names", DuplicateIds},
-            {"Empty patch names", EmptyPatchNames},
-            {"Redundant patches", RedundantPatches},
-            {"Non existing patches", CallNonExistingPatches},
-            {"Overriding patches", OverridingPatches},
-            {"Possible patches", PossiblePatchValues},
-            {"Hard-coded message strings", HardCodedStrings},
-            {"Possible strings", PossibleStringsValues},
-            {"Apply patches", PatchAllFields},
-            {"Empty string names", EmptyStringNames},
-            {"Empty string values", EmptyStringValues},
-            {"Redundant strings", RedundantStrings},
-            {"Non existing strings", CallNonExistingStrings},
-            {"Overriding strings", OverridingStrings},
-            {"Empty event names", EmptyEventNames},
-            {"Empty events", EmptyEvents},
-            {"Overriding events", OverridingEvents},
-            {"Redundant events", RedundantEvents},
-            {"Non existing events", CallNonExistingEvents},
-            {"Empty dataView names", EmptyDataViewNames},
-            {"Redundant dataViews", RedundantDataViews},
-            {"Non existing dataViews", CallNonExistingDataViews},
-            {"Overriding dataViews", OverridingDataViews},
-            {"Non existing dataTables", CallNonExistingDataTables},
-            {"Empty rule names", EmptyRuleNames},
-            {"Overriding rules", OverridingRules},
-            {"Empty tool names", EmptyToolNames},
-            {"Overriding tools", OverridingTools},
-            {"Missing forms", MissingForms},
-            {"Missing searches", MissingSearches},
-            {"JavaScript code", JsCode},
-            {"JS #_trans.dataView('DataView').count_#", JsDataViewCount},
-            {"Missing layout id's", MissingLayoutIds},
-            {"Incorrect layout id's", IncorrectLayoutIds},
-            {"Incorrect dataview-condition", IncorrectDVContitionViewName},
-            {"Incorrect tab links", IncorrectTabIds},
-            {"Incorrect REST calls", IncorrectRestCalls},
-        };
+        internal static Dictionary<string, Func<string, IEnumerable<ReportItem>>> _validatorsListNoPatch => new Dictionary<string, Func<string, IEnumerable<ReportItem>>>
+                {
+                    {"File list validation", RunValidation},
+                    {"Serialization validation", DeserializeFile},
+                    {"JSON parser validation", ParseJsonObject},
+                    {"Schema validation", SchemaValidation},
+                    {"Redundant files", RedundantFiles},
+                    {"National characters", ValidateFileChars},
+                    {"Duplicate JSON property names", DuplicateIds},
+                    {"Empty patch names", EmptyPatchNames},
+                    {"Redundant patches", RedundantPatches},
+                    {"Non existing patches", CallNonExistingPatches},
+                    {"Overriding patches", OverridingPatches},
+                    {"Possible patches", PossiblePatchValues},
+                    {"Hard-coded message strings", HardCodedStrings},
+                    {"Possible strings", PossibleStringsValues},
+                };
+        internal static Dictionary<string, Func<string, IEnumerable<ReportItem>>> _validatorsList => new Dictionary<string, Func<string, IEnumerable<ReportItem>>>
+                {
+                    {"Apply patches", PatchAllFields},
+                    {"Empty string names", EmptyStringNames},
+                    {"Empty string values", EmptyStringValues},
+                    {"Redundant strings", RedundantStrings},
+                    {"Non existing strings", CallNonExistingStrings},
+                    {"Overriding strings", OverridingStrings},
+                    {"Empty event names", EmptyEventNames},
+                    {"Empty events", EmptyEvents},
+                    {"Overriding events", OverridingEvents},
+                    {"Redundant events", RedundantEvents},
+                    {"Non existing events", CallNonExistingEvents},
+                    {"Empty dataView names", EmptyDataViewNames},
+                    {"Redundant dataViews", RedundantDataViews},
+                    {"Non existing dataViews", CallNonExistingDataViews},
+                    {"Overriding dataViews", OverridingDataViews},
+                    {"Non existing dataTables", CallNonExistingDataTables},
+                    {"Empty rule names", EmptyRuleNames},
+                    {"Overriding rules", OverridingRules},
+                    {"Empty tool names", EmptyToolNames},
+                    {"Overriding tools", OverridingTools},
+                    {"Missing forms", MissingForms},
+                    {"Missing searches", MissingSearches},
+                    {"JavaScript code", JsCode},
+                    {"JS #_trans.dataView('DataView').count_#", JsDataViewCount},
+                    {"Missing layout id's", MissingLayoutIds},
+                    {"Incorrect layout id's", IncorrectLayoutIds},
+                    {"Incorrect dataview-condition", IncorrectDVContitionViewName},
+                    {"Incorrect tab links", IncorrectTabIds},
+                    {"Incorrect REST calls", IncorrectRestCalls},
+                    {"Duplicate GUID's", DuplicateGUIDs},
+                };
 
         //cached data
         private static Dictionary<string, string> _patchValues;
-        private static Dictionary<string, List<ParsedProperty>> _parsedFiles;
+        private static ConcurrentDictionary<string, List<ParsedProperty>> _parsedFiles;
         private static bool _noServiceModel;
+        private static bool _allFieldsPatched;
 
         //global cache
-        private static Dictionary<string, string> _schemaList = new Dictionary<string, string>();
-        private static Dictionary<string, Dictionary<string, List<string>>> _knownServices = new Dictionary<string, Dictionary<string, List<string>>>();
+        private static ConcurrentDictionary<string, string> _schemaList = new ConcurrentDictionary<string, string>();
+        private static ConcurrentDictionary<string, Dictionary<string, List<string>>> _knownServices = new ConcurrentDictionary<string, Dictionary<string, List<string>>>();
 
-        internal static void Initialize(ProcessConfiguration processConfiguration, ProjectConfiguration projectConfiguration, SeedData seedData, bool clearCashe)
+        internal static void Initialize(ProcessConfiguration processConfiguration,
+            ProjectConfiguration projectConfiguration,
+            SeedData seedData,
+            bool clearCashe)
         {
             if (processConfiguration != null)
             {
@@ -260,6 +281,7 @@ namespace KineticValidator
                 _fileTypes = processConfiguration.FileTypes;
                 _ignoreHttpsError = processConfiguration.IgnoreHttpsError;
                 _skipSchemaErrors = processConfiguration.SkipSchemaErrors;
+                _patchAllFields = processConfiguration.PatchAllFields;
                 _systemMacros = processConfiguration.SystemMacros;
                 _systemDataViews = processConfiguration.SystemDataViews;
                 _suppressSchemaErrors = processConfiguration.SuppressSchemaErrors;
@@ -284,10 +306,11 @@ namespace KineticValidator
             }
 
             _patchValues = new Dictionary<string, string>();
+            _allFieldsPatched = false;
 
             if (clearCashe)
             {
-                _parsedFiles = new Dictionary<string, List<ParsedProperty>>();
+                _parsedFiles = new ConcurrentDictionary<string, List<ParsedProperty>>();
                 _noServiceModel = false;
 
                 //_schemaList = new Dictionary<string, string>();
@@ -308,7 +331,9 @@ namespace KineticValidator
         {
             var valueList = new List<string>();
             if (string.IsNullOrEmpty(field))
+            {
                 return valueList;
+            }
 
             const char startChar = '{';
             const char endChar = '}';
@@ -325,6 +350,7 @@ namespace KineticValidator
                     var n = 0;
                     var sequence = new List<Brackets>();
                     for (var i = 0; i < token.Length; i++)
+                    {
                         if (token[i] == startChar)
                         {
                             l++;
@@ -349,19 +375,24 @@ namespace KineticValidator
                             n++;
                             l--;
                         }
+                    }
 
                     l = sequence.Max(brackets => brackets.level);
                     for (; l > 0; l--)
                     {
                         var s = sequence.Where(m => m.level == l).ToArray();
                         for (var i = 1; i < s.Length; i++)
+                        {
                             if (s[i - 1].number + 1 == s[i].number && s[i - 1].bracket == startChar &&
                                 s[i].bracket == endChar)
                             {
                                 var str = token.Substring(s[i - 1].pos + 1, s[i].pos - s[i - 1].pos - 1);
                                 if (str.Contains('.'))
+                                {
                                     valueList.Add(str);
+                                }
                             }
+                        }
                     }
                 }
             }
@@ -375,8 +406,12 @@ namespace KineticValidator
             var c = 0;
 
             foreach (var ch in data)
+            {
                 if (ch == countChar)
+                {
                     c++;
+                }
+            }
 
             return c;
         }
@@ -385,7 +420,9 @@ namespace KineticValidator
         {
             var patchList = new List<string>();
             if (string.IsNullOrEmpty(field))
+            {
                 return patchList;
+            }
 
             var improperChars = new[] { ' ', '.', ',', ':', ';', '\'', '\"', '(', ')', '{', '}', '[', ']', '~' };
             var tokens = field.Split(improperChars);
@@ -410,9 +447,13 @@ namespace KineticValidator
                                 {
                                     // stack overflow comes on "%%patch%" processing. Easy way to handle.
                                     if (newPatch.StartsWith("%%") && newPatch.EndsWith("%"))
+                                    {
                                         pos1 = pos2 + 1;
+                                    }
                                     else
+                                    {
                                         patchList.AddRange(GetPatchList(newPatch));
+                                    }
                                 }
                                 else
                                 {
@@ -463,7 +504,9 @@ namespace KineticValidator
             return field.Contains("trans.dataView(") && field.Contains(").count");
         }
 
-        private static async Task<List<ReportItem>> ValidateFileSchema(string _projectName, string fullFileName, string schemaUrl = "")
+        private static async Task<List<ReportItem>> ValidateFileSchema(string _projectName,
+            string fullFileName,
+            string schemaUrl = "")
         {
             var report = new List<ReportItem>();
             string jsonText;
@@ -509,17 +552,24 @@ namespace KineticValidator
                     && jsonText[versionIndex] != '"'
                     && jsonText[versionIndex] != '\r'
                     && jsonText[versionIndex] != '\n')
+                {
                     versionIndex++;
+                }
+
                 versionIndex++;
                 var strEnd = versionIndex;
                 while (strEnd < jsonText.Length
                     && jsonText[strEnd] != '"'
                     && jsonText[strEnd] != '\r'
                     && jsonText[strEnd] != '\n')
+                {
                     strEnd++;
+                }
 
                 if (versionIndex >= 0 && jsonText.Length > versionIndex)
+                {
                     schemaUrl = jsonText.Substring(versionIndex, strEnd - versionIndex).Trim();
+                }
             }
 
             if (string.IsNullOrEmpty(schemaUrl) || !schemaUrl.EndsWith(".json"))
@@ -559,7 +609,7 @@ namespace KineticValidator
                     report.Add(reportItem);
                 }
 
-                _schemaList.Add(schemaUrl, schemaData);
+                _schemaList.TryAdd(schemaUrl, schemaData);
             }
 
             var schemaText = _schemaList[schemaUrl];
@@ -602,7 +652,6 @@ namespace KineticValidator
 
             if (schema == null)
             {
-                //_textLog.AppendLine($"{Environment.NewLine}{fullFileName} schema is empty{Environment.NewLine}");
                 var reportItem = new ReportItem
                 {
                     ProjectName = _projectName,
@@ -644,7 +693,7 @@ namespace KineticValidator
                 var errorList = GetErrorList(_projectName, error);
                 if (_skipSchemaErrors && _suppressSchemaErrors.Contains(error.Kind))
                 {
-                    //File.AppendAllText(LogFileName, errorText);
+                    Utilities.SaveDevLog(errorText);
                 }
                 else
                 {
@@ -675,6 +724,7 @@ namespace KineticValidator
             if (error is ChildSchemaValidationError subErrorCollection)
             {
                 foreach (var subError in subErrorCollection.Errors)
+                {
                     foreach (var subErrorItem in subError.Value)
                     {
                         var report = new ReportItem
@@ -690,6 +740,7 @@ namespace KineticValidator
 
                         errorList.Add(report);
                     }
+                }
             }
             else
             {
@@ -720,8 +771,11 @@ namespace KineticValidator
                 + error.Path);
 
             if (error is ChildSchemaValidationError subErrorCollection)
+            {
                 foreach (var subError in subErrorCollection.Errors)
+                {
                     foreach (var subErrorItem in subError.Value)
+                    {
                         errorText.AppendLine("\t"
                             + "- line #"
                             + subErrorItem.LineNumber
@@ -729,6 +783,9 @@ namespace KineticValidator
                             + subErrorItem.Kind
                             + ", path="
                             + subErrorItem.Path);
+                    }
+                }
+            }
 
             return errorText.ToString();
         }
@@ -737,7 +794,9 @@ namespace KineticValidator
         {
             var schemaData = "";
             if (string.IsNullOrEmpty(schemaUrl))
+            {
                 return schemaData;
+            }
 
             var localPath = GetLocalUrlPath(schemaUrl);
             if (File.Exists(localPath))
@@ -759,7 +818,9 @@ namespace KineticValidator
                         try
                         {
                             if (!Directory.Exists(dirPath))
+                            {
                                 Directory.CreateDirectory(dirPath);
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -778,16 +839,23 @@ namespace KineticValidator
         private static string GetLocalUrlPath(string url)
         {
             if (!url.Contains("://"))
+            {
                 return "";
+            }
 
             url = url.Replace("://", "");
             if (!url.Contains("/"))
+            {
                 return "";
+            }
 
             var currentDirectory = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule?.FileName);
             var i = url.IndexOf('/');
             if (i < 0 || url.Length <= url.IndexOf('/'))
+            {
                 return "";
+            }
+
             var localPath = currentDirectory + url.Substring(i);
             localPath = localPath.Replace('/', '\\');
             return localPath;
@@ -809,7 +877,7 @@ namespace KineticValidator
                 }
 
                 list = ParseJsonPathsStr(json.Replace(' ', ' '), true);
-                _parsedFiles.Add(file, list);
+                _parsedFiles.TryAdd(file, list);
             }
             else
             {
@@ -825,6 +893,7 @@ namespace KineticValidator
             public string methodName;
             public List<string> parameters;
         }
+
 
         internal static RestCallInfo GetRestCallParams(string svcName, string methodName, string assemblyPath)
         {
@@ -864,7 +933,17 @@ namespace KineticValidator
                     var m = new Dictionary<string, List<string>>();
                     foreach (var item in methodsList)
                     {
-                        List<string> paramsList = loader.GetParamsSafely(svcName, item, assemblyPath);
+                        List<string> paramsList = null;
+                        if (!_noServiceModel)
+                        {
+                            paramsList = loader.GetParamsSafely(svcName, item, assemblyPath);
+                        }
+
+                        if (paramsList == null)
+                        {
+                            _noServiceModel = true;
+                        }
+
                         m.Add(item, paramsList);
 
                         if (item == methodName)
@@ -873,7 +952,7 @@ namespace KineticValidator
                             result.parameters = paramsList;
                         }
                     }
-                    _knownServices.Add(svcName, m);
+                    _knownServices.TryAdd(svcName, m);
                 }
                 catch (Exception ex)
                 {
@@ -886,43 +965,114 @@ namespace KineticValidator
             }
             return result;
         }
+
+        internal static Dictionary<string, string> CollectPatchValues()
+        {
+            var patchList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType == JsoncContentType.Patch
+                    && n.Parent == "patch"
+                    && n.Name == "id");
+
+            var patchValues = new Dictionary<string, string>();
+            foreach (var item in patchList)
+            {
+                var newValue = _jsonPropertiesCollection
+                    .LastOrDefault(n =>
+                        n.ItemType == JsonItemType.Property
+                        && n.FileType == JsoncContentType.Patch
+                        && n.FullFileName == item.FullFileName
+                        && n.ParentPath == item.ParentPath
+                        && n.Name == "value")
+                    ?.Value;
+
+                var patchName = "%" + item.Value + "%";
+                if (!patchValues.ContainsKey(patchName))
+                {
+                    patchValues.Add(patchName, newValue);
+                }
+                else
+                {
+                    patchValues[patchName] = newValue;
+                }
+            }
+
+            var allReplaced = false;
+            do
+            {
+                var toPatch = patchValues.Where(n =>
+                n.Value.Trim().StartsWith("%")
+                && n.Value.Trim().EndsWith("%"));
+
+                allReplaced = true;
+
+                if (toPatch.Any())
+                {
+                    var replaceValues = new Dictionary<string, string>();
+                    foreach (var item in toPatch)
+                    {
+                        foreach (var patch in patchValues)
+                        {
+                            if (patch.Key == item.Value)
+                            {
+                                replaceValues.Add(item.Key, patch.Value);
+                                allReplaced = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    foreach (var r in replaceValues)
+                    {
+                        patchValues[r.Key] = r.Value;
+                    }
+                }
+            } while (!allReplaced);
+
+            return patchValues;
+        }
         #endregion
 
         #region Validator methods
-        internal static List<ReportItem> RunValidation(string methodName)
+        internal static IEnumerable<ReportItem> RunValidation(string methodName)
         {
             return _RunValidationReportsCollection;
         }
 
-        internal static List<ReportItem> DeserializeFile(string methodName)
+        internal static IEnumerable<ReportItem> DeserializeFile(string methodName)
         {
             return _DeserializeFileReportsCollection;
         }
 
-        internal static List<ReportItem> ParseJsonObject(string methodName)
+        internal static IEnumerable<ReportItem> ParseJsonObject(string methodName)
         {
             return _ParseJsonObjectReportsCollection;
         }
 
-        internal static List<ReportItem> SchemaValidation(string methodName)
+        internal static IEnumerable<ReportItem> SchemaValidation(string methodName)
         {
             // validate every file with schema
             var totalFiles = _processedFilesList.Count;
             var i1 = 1;
 
-            var report = new List<ReportItem>();
-            foreach (var file in _processedFilesList)
-            {
-                //SetStatus($"Validation scheme: {file.Key} [{i1}/{totalFiles}]");
-                var reportSet = ValidateFileSchema(_projectName, file.Key, file.Value);
-                report.AddRange(reportSet.Result);
-                i1++;
-            }
+            var report = new BlockingCollection<ReportItem>();
+            Parallel.ForEach(_processedFilesList, file =>
+           {
+               var reportSet = ValidateFileSchema(_projectName, file.Key, file.Value);
+
+               foreach (var item in reportSet.Result)
+               {
+                   report.Add(item);
+               }
+
+               i1++;
+           });
 
             return report;
         }
 
-        internal static List<ReportItem> RedundantFiles(string methodName)
+        internal static IEnumerable<ReportItem> RedundantFiles(string methodName)
         {
             // collect full list of files inside the project folder (not including shared)
             var fullFilesList = new List<string>();
@@ -932,7 +1082,9 @@ namespace KineticValidator
             foreach (var file in fullFilesList)
             {
                 if (file.IndexOf(_projectPath + "\\views\\", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
                     continue;
+                }
 
                 if (!_processedFilesList.ContainsKey(file)
                     && !Utilities.IsShared(file, _projectPath))
@@ -953,55 +1105,7 @@ namespace KineticValidator
             return report;
         }
 
-        internal static List<ReportItem> DuplicateIds(string methodName)
-        {
-            var report = new List<ReportItem>();
-
-            foreach (var file in _processedFilesList)
-            {
-                var propertyList = GetParsedFile(file.Key);
-
-                var item2 = propertyList.Where(n =>
-                    n.Type == PropertyType.Property)
-                        .GroupBy(n => n.Path)
-                        .Where(n => n.Count() > 1);
-
-                var duplicateIdList = item2 as IGrouping<string, ParsedProperty>[] ?? item2.ToArray();
-                if (duplicateIdList.Any())
-                {
-                    foreach (var dup in duplicateIdList)
-                    {
-                        string values = "";
-                        foreach (var item in dup)
-                        {
-                            if (string.IsNullOrEmpty(values))
-                            {
-                                values += "\"" + item.Value + "\"";
-                            }
-                            else
-                            {
-                                values += ", \"" + item.Value + "\"";
-                            }
-                        }
-                        var reportItem = new ReportItem
-                        {
-                            ProjectName = _projectName,
-                            FullFileName = file.Key,
-                            JsonPath = dup.First().Path,
-                            Message = $"JSON file has duplicate property names \"{dup.First().Name}\" with values: {values}",
-                            ValidationType = ValidationTypeEnum.Parse.ToString(),
-                            Severity = ImportanceEnum.Error.ToString(),
-                            Source = methodName
-                        };
-                        report.Add(reportItem);
-                    }
-                }
-            }
-
-            return report;
-        }
-
-        internal static List<ReportItem> ValidateFileChars(string methodName)
+        internal static IEnumerable<ReportItem> ValidateFileChars(string methodName)
         {
             var report = new List<ReportItem>();
 
@@ -1100,182 +1204,163 @@ namespace KineticValidator
             return report;
         }
 
-        internal static List<ReportItem> EmptyStringNames(string methodName)
+        internal static IEnumerable<ReportItem> DuplicateIds(string methodName)
         {
-            var emptyStringsList = _jsonPropertiesCollection
-                .Where(n =>
-                    !n.Shared
-                    && n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Strings
-                    && n.Parent == "strings"
-                    && string.IsNullOrEmpty(n.Name));
-
             var report = new List<ReportItem>();
-            foreach (var stringResource in emptyStringsList)
+
+            foreach (var file in _processedFilesList)
+            {
+                var propertyList = GetParsedFile(file.Key);
+
+                var item2 = propertyList.Where(n =>
+                    n.Type == PropertyType.Property)
+                        .GroupBy(n => n.Path)
+                        .Where(n => n.Count() > 1);
+
+                var duplicateIdList = item2 as IGrouping<string, ParsedProperty>[] ?? item2.ToArray();
+                if (duplicateIdList.Any())
+                {
+                    foreach (var dup in duplicateIdList)
+                    {
+                        string values = "";
+                        foreach (var item in dup)
+                        {
+                            if (string.IsNullOrEmpty(values))
+                            {
+                                values += "\"" + item.Value + "\"";
+                            }
+                            else
+                            {
+                                values += ", \"" + item.Value + "\"";
+                            }
+                        }
+                        var reportItem = new ReportItem
+                        {
+                            ProjectName = _projectName,
+                            FullFileName = file.Key,
+                            JsonPath = dup.First().Path,
+                            Message = $"JSON file has duplicate property names \"{dup.First().Name}\" with values: {values}",
+                            ValidationType = ValidationTypeEnum.Parse.ToString(),
+                            Severity = ImportanceEnum.Error.ToString(),
+                            Source = methodName
+                        };
+                        report.Add(reportItem);
+                    }
+                }
+            }
+
+            return report;
+        }
+
+        internal static IEnumerable<ReportItem> EmptyPatchNames(string methodName)
+        {
+            var emptPatchList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType == JsoncContentType.Patch
+                    && !n.Shared
+                    && n.Parent == "patch"
+                    && n.Name == "id"
+                    && string.IsNullOrEmpty(n.Value));
+            var report = new List<ReportItem>();
+            foreach (var patchResource in emptPatchList)
             {
                 var reportItem = new ReportItem
                 {
                     ProjectName = _projectName,
-                    FullFileName = stringResource.FullFileName,
-                    FileType = stringResource.FileType.ToString(),
-                    LineId = stringResource.LineId.ToString(),
-                    JsonPath = stringResource.JsonPath,
-                    Message = $"String id \"{stringResource.Name}\" is empty",
+                    FullFileName = patchResource.FullFileName,
+                    FileType = patchResource.FileType.ToString(),
+                    LineId = patchResource.LineId.ToString(),
+                    JsonPath = patchResource.JsonPath,
+                    Message = $"Patch id \"{patchResource.Value}\" is empty",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Error.ToString(),
                     Source = methodName
                 };
                 report.Add(reportItem);
             }
-
             return report;
         }
 
-        internal static List<ReportItem> EmptyStringValues(string methodName)
+        internal static IEnumerable<ReportItem> RedundantPatches(string methodName)
         {
-            var emptyStringsList = _jsonPropertiesCollection
+            var patchList = _jsonPropertiesCollection
                 .Where(n =>
-                    !n.Shared
-                    && n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Strings
-                    && n.Parent == "strings"
-                    && string.IsNullOrEmpty(n.Value));
-
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType == JsoncContentType.Patch
+                    && !n.Shared
+                    && n.Parent == "patch"
+                    && n.Name == "id"
+                    && !string.IsNullOrEmpty(n.Value));
             var report = new List<ReportItem>();
-            foreach (var stringResource in emptyStringsList)
+            foreach (var patchResource in patchList)
             {
-                var reportItem = new ReportItem
+                if (string.IsNullOrEmpty(patchResource.Value))
                 {
-                    ProjectName = _projectName,
-                    FullFileName = stringResource.FullFileName,
-                    FileType = stringResource.FileType.ToString(),
-                    LineId = stringResource.LineId.ToString(),
-                    JsonPath = stringResource.JsonPath,
-                    Message = $"String id \"{stringResource.Name}\" value is empty",
-                    ValidationType = ValidationTypeEnum.Logic.ToString(),
-                    Severity = ImportanceEnum.Warning.ToString(),
-                    Source = methodName
-                };
-                report.Add(reportItem);
-            }
+                    continue;
+                }
 
-            return report;
-        }
-
-        internal static List<ReportItem> RedundantStrings(string methodName)
-        {
-            var stringsList = _jsonPropertiesCollection
-                .Where(n =>
-                    !n.Shared
-                    && n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Strings
-                    && n.Parent == "strings"
-                    && !string.IsNullOrEmpty(n.Value)
-                    && !string.IsNullOrEmpty(n.Name));
-
-            var report = new List<ReportItem>();
-            foreach (var stringResource in stringsList)
-                if (!string.IsNullOrEmpty(stringResource.Name)
-                    && !_jsonPropertiesCollection.Any(n =>
-                            n.ItemType == JsonItemType.Property
-                            && n.Value.Contains("strings." + stringResource.Name)))
+                if (!_jsonPropertiesCollection
+                    .Any(n =>
+                        n.ItemType == JsonItemType.Property
+                        && n.FileType != JsoncContentType.Patch
+                        && n.Value.Contains("%" + patchResource.Value + "%")))
                 {
                     var reportItem = new ReportItem
                     {
                         ProjectName = _projectName,
-                        FullFileName = stringResource.FullFileName,
-                        FileType = stringResource.FileType.ToString(),
-                        LineId = stringResource.LineId.ToString(),
-                        JsonPath = stringResource.JsonPath,
-                        Message = $"String \"{stringResource.Name}\" is not used in the project",
+                        FullFileName = patchResource.FullFileName,
+                        FileType = patchResource.FileType.ToString(),
+                        LineId = patchResource.LineId.ToString(),
+                        JsonPath = patchResource.JsonPath,
+                        Message = $"Patch \"{patchResource.Value}\" is not used in the project",
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Warning.ToString(),
                         Source = methodName
                     };
                     report.Add(reportItem);
                 }
-            return report;
-        }
-
-        internal static List<ReportItem> CallNonExistingStrings(string methodName)
-        {
-            var stringsList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Strings
-                    && n.Parent == "strings"
-                    && !string.IsNullOrEmpty(n.Value)
-                    && !string.IsNullOrEmpty(n.Name));
-
-            var fieldsList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && !string.IsNullOrEmpty(n.Value)
-                    && n.Value.Contains("{{strings."));
-
-            var report = new List<ReportItem>();
-            foreach (var field in fieldsList)
-            {
-                var strList = GetTableField(field.Value);
-                foreach (var str in strList)
-                    if (!string.IsNullOrEmpty(str)
-                        && str.StartsWith("strings.")
-                        && !stringsList
-                        .Any(n => n.Name == str.Replace("strings.", "")))
-                    {
-                        var reportItem = new ReportItem
-                        {
-                            ProjectName = _projectName,
-                            FullFileName = field.FullFileName,
-                            FileType = field.FileType.ToString(),
-                            LineId = field.LineId.ToString(),
-                            JsonPath = field.JsonPath,
-                            Message = $"String \"{str}\" is not defined in the project",
-                            ValidationType = ValidationTypeEnum.Logic.ToString(),
-                            Severity = ImportanceEnum.Error.ToString(),
-                            Source = methodName
-                        };
-                        report.Add(reportItem);
-                    }
             }
             return report;
         }
 
-        internal static List<ReportItem> OverridingStrings(string methodName)
+        internal static IEnumerable<ReportItem> CallNonExistingPatches(string methodName)
         {
-            var duplicateStringsList = _jsonPropertiesCollection
+            var patchList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Strings
-                    && n.Parent == "strings"
-                    && !string.IsNullOrEmpty(n.Value)
-                    && !string.IsNullOrEmpty(n.Name))
-                .GroupBy(n => n.Name)
-                .Where(n => n.Count() > 1);
+                    && n.FileType == JsoncContentType.Patch
+                    && n.Parent == "patch"
+                    && n.Name == "id"
+                    && !string.IsNullOrEmpty(n.Value));
 
             var report = new List<ReportItem>();
-            if (duplicateStringsList.Any())
-                foreach (var dup in duplicateStringsList)
+            foreach (var property in _jsonPropertiesCollection)
+            {
+                if (property.ItemType != JsonItemType.Property)
                 {
-                    var strDup = dup.ToArray();
-                    for (var i = 1; i < strDup.Count(); i++)
+                    continue;
+                }
+
+                var usedPatchList = GetPatchList(property.Value);
+                foreach (var patchItem in usedPatchList)
+                {
+                    if (string.IsNullOrEmpty(patchItem))
+                    {
+                        continue;
+                    }
+
+                    if (!_systemMacros.Contains(patchItem)
+                        && !patchList.Any(n => n.Value == patchItem.Trim('%')))
                     {
                         var reportItem = new ReportItem
                         {
                             ProjectName = _projectName,
-                            FullFileName = strDup[i - 1].FullFileName
-                                           + _splitChar
-                                           + strDup[i].FullFileName,
-                            Message = $"String \"{strDup[i - 1].Name}\" is overridden{Environment.NewLine} [\"{strDup[i - 1].Value}\" => \"{strDup[i].Value}\"]",
-                            FileType = strDup[i - 1].FileType
-                                       + _splitChar.ToString()
-                                       + strDup[i].FileType,
-                            LineId = strDup[i - 1].LineId
-                                     + _splitChar.ToString()
-                                     + strDup[i].LineId,
-                            JsonPath = strDup[i - 1].JsonPath
-                                       + _splitChar
-                                       + strDup[i].JsonPath,
+                            FullFileName = property.FullFileName,
+                            FileType = property.FileType.ToString(),
+                            LineId = property.LineId.ToString(),
+                            JsonPath = property.JsonPath,
+                            Message = $"Patch \"{patchItem}\" is not defined in the project",
                             ValidationType = ValidationTypeEnum.Logic.ToString(),
                             Severity = ImportanceEnum.Error.ToString(),
                             Source = methodName
@@ -1283,10 +1368,129 @@ namespace KineticValidator
                         report.Add(reportItem);
                     }
                 }
+            }
             return report;
         }
 
-        internal static List<ReportItem> HardCodedStrings(string methodName)
+        internal static IEnumerable<ReportItem> OverridingPatches(string methodName)
+        {
+            var duplicatePatchesList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType == JsoncContentType.Patch
+                    && n.Parent == "patch"
+                    && n.Name == "id"
+                    && !string.IsNullOrEmpty(n.Value))
+                .GroupBy(n => n.Value)
+                .Where(n => n.Count() > 1);
+
+            var report = new List<ReportItem>();
+            if (duplicatePatchesList.Any())
+            {
+                foreach (var dup in duplicatePatchesList)
+                {
+                    var patchDup = dup.ToArray();
+                    for (var i = 1; i < patchDup.Count(); i++)
+                    {
+                        var oldValue = _jsonPropertiesCollection
+                            .LastOrDefault(n => n.FileType == JsoncContentType.Patch
+                                                && n.FullFileName == patchDup[i - 1].FullFileName
+                                                && n.ParentPath == patchDup[i - 1].ParentPath
+                                                && n.Name == "value");
+                        if (oldValue.Shared)
+                        {
+                            continue;
+                        }
+
+                        var newValue = _jsonPropertiesCollection
+                            .LastOrDefault(n => n.FileType == JsoncContentType.Patch
+                                                && n.FullFileName == patchDup[i].FullFileName
+                                                && n.ParentPath == patchDup[i].ParentPath
+                                                && n.Name == "value");
+
+                        if (string.IsNullOrEmpty(oldValue.Value) || oldValue.Value == newValue.Value)
+                        {
+                            continue;
+                        }
+
+                        var reportItem = new ReportItem
+                        {
+                            ProjectName = _projectName,
+                            FullFileName = patchDup[i - 1].FullFileName
+                                           + _splitChar
+                                           + patchDup[i].FullFileName,
+                            Message = $"Patch \"{patchDup[i - 1].Value}\" is overridden{Environment.NewLine} [\"{oldValue.Value}\" => \"{newValue.Value}\"]",
+                            FileType = patchDup[i - 1].FileType
+                                       + _splitChar.ToString()
+                                       + patchDup[i].FileType,
+                            LineId = patchDup[i - 1].LineId
+                                     + _splitChar.ToString()
+                                     + patchDup[i].LineId,
+                            JsonPath = patchDup[i - 1].JsonPath
+                                       + _splitChar
+                                       + patchDup[i].JsonPath,
+                            ValidationType = ValidationTypeEnum.Logic.ToString(),
+                            Severity = ImportanceEnum.Error.ToString(),
+                            Source = methodName
+                        };
+                        report.Add(reportItem);
+                    }
+                }
+            }
+
+            return report;
+        }
+
+        internal static IEnumerable<ReportItem> PossiblePatchValues(string methodName)
+        {
+            if (_patchValues == null || _patchValues.Count == 0)
+            {
+                _patchValues = CollectPatchValues();
+            }
+
+            var missedPatchList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType != JsoncContentType.Patch
+                    && _patchValues.Any(m =>
+                        !string.IsNullOrEmpty(m.Value)
+                        && m.Value == n.Value));
+
+            var report = new List<ReportItem>();
+            foreach (var item in missedPatchList)
+            {
+                var patchlist = _patchValues
+                    .Where(m => m.Value == item.Value)
+                    .Select(n => n.Key);
+                var patchDefinitions = "";
+                foreach (var str in patchlist)
+                {
+                    if (!string.IsNullOrEmpty(patchDefinitions))
+                    {
+                        patchDefinitions += ", ";
+                    }
+
+                    patchDefinitions += str;
+                }
+
+                var reportItem = new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = item.FullFileName,
+                    FileType = item.FileType.ToString(),
+                    LineId = item.LineId.ToString(),
+                    JsonPath = item.JsonPath,
+                    Message = $"Value \"{item.Value}\" can be replaced with patch(es): {patchDefinitions}",
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Note.ToString(),
+                    Source = methodName
+                };
+                report.Add(reportItem);
+            }
+            return report;
+        }
+
+        internal static IEnumerable<ReportItem> HardCodedStrings(string methodName)
         {
             var stringsList = _jsonPropertiesCollection
                 .Where(n =>
@@ -1317,7 +1521,7 @@ namespace KineticValidator
             return report;
         }
 
-        internal static List<ReportItem> PossibleStringsValues(string methodName)
+        internal static IEnumerable<ReportItem> PossibleStringsValues(string methodName)
         {
             var stringsList = _jsonPropertiesCollection
                 .Where(n =>
@@ -1346,7 +1550,9 @@ namespace KineticValidator
                 foreach (var str in strlist)
                 {
                     if (!string.IsNullOrEmpty(stringDefinitions))
+                    {
                         stringDefinitions += ", ";
+                    }
 
                     stringDefinitions += str;
                 }
@@ -1368,8 +1574,248 @@ namespace KineticValidator
             return report;
         }
 
-        internal static List<ReportItem> EmptyEventNames(string methodName)
+        // validations which works with patches applied
+        internal static IEnumerable<ReportItem> PatchAllFields(string methodName)
         {
+            if (_patchValues == null || _patchValues.Count == 0)
+            {
+                _patchValues = CollectPatchValues();
+            }
+
+            var valuesList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.Value.Contains('%'));
+
+            if (valuesList.Any())
+            {
+                foreach (var item in valuesList)
+                {
+                    foreach (var patch in _patchValues)
+                    {
+                        item.Value = item.Value.Replace(patch.Key, patch.Value);
+                    }
+                }
+            }
+            _allFieldsPatched = true;
+
+            return new List<ReportItem>();
+        }
+
+        internal static IEnumerable<ReportItem> EmptyStringNames(string methodName)
+        {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
+            var emptyStringsList = _jsonPropertiesCollection
+                .Where(n =>
+                    !n.Shared
+                    && n.ItemType == JsonItemType.Property
+                    && n.FileType == JsoncContentType.Strings
+                    && n.Parent == "strings"
+                    && string.IsNullOrEmpty(n.Name));
+
+            var report = new List<ReportItem>();
+            foreach (var stringResource in emptyStringsList)
+            {
+                var reportItem = new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = stringResource.FullFileName,
+                    FileType = stringResource.FileType.ToString(),
+                    LineId = stringResource.LineId.ToString(),
+                    JsonPath = stringResource.JsonPath,
+                    Message = $"String id \"{stringResource.Name}\" is empty",
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Error.ToString(),
+                    Source = methodName
+                };
+                report.Add(reportItem);
+            }
+
+            return report;
+        }
+
+        internal static IEnumerable<ReportItem> EmptyStringValues(string methodName)
+        {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
+            var emptyStringsList = _jsonPropertiesCollection
+                .Where(n =>
+                    !n.Shared
+                    && n.ItemType == JsonItemType.Property
+                    && n.FileType == JsoncContentType.Strings
+                    && n.Parent == "strings"
+                    && string.IsNullOrEmpty(n.Value));
+
+            var report = new List<ReportItem>();
+            foreach (var stringResource in emptyStringsList)
+            {
+                var reportItem = new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = stringResource.FullFileName,
+                    FileType = stringResource.FileType.ToString(),
+                    LineId = stringResource.LineId.ToString(),
+                    JsonPath = stringResource.JsonPath,
+                    Message = $"String id \"{stringResource.Name}\" value is empty",
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Warning.ToString(),
+                    Source = methodName
+                };
+                report.Add(reportItem);
+            }
+
+            return report;
+        }
+
+        internal static IEnumerable<ReportItem> RedundantStrings(string methodName)
+        {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
+            var stringsList = _jsonPropertiesCollection
+                .Where(n =>
+                    !n.Shared
+                    && n.ItemType == JsonItemType.Property
+                    && n.FileType == JsoncContentType.Strings
+                    && n.Parent == "strings"
+                    && !string.IsNullOrEmpty(n.Value)
+                    && !string.IsNullOrEmpty(n.Name));
+
+            var report = new List<ReportItem>();
+            foreach (var stringResource in stringsList)
+            {
+                if (!string.IsNullOrEmpty(stringResource.Name)
+                    && !_jsonPropertiesCollection.Any(n =>
+                            n.ItemType == JsonItemType.Property
+                            && n.Value.Contains("strings." + stringResource.Name)))
+                {
+                    var reportItem = new ReportItem
+                    {
+                        ProjectName = _projectName,
+                        FullFileName = stringResource.FullFileName,
+                        FileType = stringResource.FileType.ToString(),
+                        LineId = stringResource.LineId.ToString(),
+                        JsonPath = stringResource.JsonPath,
+                        Message = $"String \"{stringResource.Name}\" is not used in the project",
+                        ValidationType = ValidationTypeEnum.Logic.ToString(),
+                        Severity = ImportanceEnum.Warning.ToString(),
+                        Source = methodName
+                    };
+                    report.Add(reportItem);
+                }
+            }
+
+            return report;
+        }
+
+        internal static IEnumerable<ReportItem> CallNonExistingStrings(string methodName)
+        {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
+            var stringsList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType == JsoncContentType.Strings
+                    && n.Parent == "strings"
+                    && !string.IsNullOrEmpty(n.Value)
+                    && !string.IsNullOrEmpty(n.Name));
+
+            var fieldsList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && !string.IsNullOrEmpty(n.Value)
+                    && n.Value.Contains("{{strings."));
+
+            var report = new List<ReportItem>();
+            foreach (var field in fieldsList)
+            {
+                var strList = GetTableField(field.Value);
+                foreach (var str in strList)
+                {
+                    if (!string.IsNullOrEmpty(str)
+                        && str.StartsWith("strings.")
+                        && !stringsList
+                        .Any(n => n.Name == str.Replace("strings.", "")))
+                    {
+                        var reportItem = new ReportItem
+                        {
+                            ProjectName = _projectName,
+                            FullFileName = field.FullFileName,
+                            FileType = field.FileType.ToString(),
+                            LineId = field.LineId.ToString(),
+                            JsonPath = field.JsonPath,
+                            Message = $"String \"{str}\" is not defined in the project",
+                            ValidationType = ValidationTypeEnum.Logic.ToString(),
+                            Severity = ImportanceEnum.Error.ToString(),
+                            Source = methodName
+                        };
+                        report.Add(reportItem);
+                    }
+                }
+            }
+            return report;
+        }
+
+        internal static IEnumerable<ReportItem> OverridingStrings(string methodName)
+        {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
+            var duplicateStringsList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType == JsoncContentType.Strings
+                    && n.Parent == "strings"
+                    && !string.IsNullOrEmpty(n.Value)
+                    && !string.IsNullOrEmpty(n.Name))
+                .GroupBy(n => n.Name)
+                .Where(n => n.Count() > 1);
+
+            var report = new List<ReportItem>();
+            if (duplicateStringsList.Any())
+            {
+                foreach (var dup in duplicateStringsList)
+                {
+                    var strDup = dup.ToArray();
+                    for (var i = 1; i < strDup.Count(); i++)
+                    {
+                        var reportItem = new ReportItem
+                        {
+                            ProjectName = _projectName,
+                            FullFileName = strDup[i - 1].FullFileName
+                                           + _splitChar
+                                           + strDup[i].FullFileName,
+                            Message = $"String \"{strDup[i - 1].Name}\" is overridden{Environment.NewLine} [\"{strDup[i - 1].Value}\" => \"{strDup[i].Value}\"]",
+                            FileType = strDup[i - 1].FileType
+                                       + _splitChar.ToString()
+                                       + strDup[i].FileType,
+                            LineId = strDup[i - 1].LineId
+                                     + _splitChar.ToString()
+                                     + strDup[i].LineId,
+                            JsonPath = strDup[i - 1].JsonPath
+                                       + _splitChar
+                                       + strDup[i].JsonPath,
+                            ValidationType = ValidationTypeEnum.Logic.ToString(),
+                            Severity = ImportanceEnum.Error.ToString(),
+                            Source = methodName
+                        };
+                        report.Add(reportItem);
+                    }
+                }
+            }
+
+            return report;
+        }
+
+        internal static IEnumerable<ReportItem> EmptyEventNames(string methodName)
+        {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
             var emptyIdsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -1398,8 +1844,11 @@ namespace KineticValidator
             return report;
         }
 
-        internal static List<ReportItem> EmptyEvents(string methodName)
+        internal static IEnumerable<ReportItem> EmptyEvents(string methodName)
         {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
             var emptyEventsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -1440,8 +1889,103 @@ namespace KineticValidator
             return report;
         }
 
-        internal static List<ReportItem> RedundantEvents(string methodName)
+        internal static IEnumerable<ReportItem> OverridingEvents(string methodName)
         {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
+            var duplicateIdsList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType == JsoncContentType.Events
+                    && n.Name == "id"
+                    && n.Parent == "events"
+                    && !string.IsNullOrEmpty(n.Value))
+                .GroupBy(n => n.Value)
+                .Where(n => n.Count() > 1);
+
+            var report = new List<ReportItem>();
+            if (duplicateIdsList.Any())
+            {
+                foreach (var dup in duplicateIdsList)
+                {
+                    // duplicate "id" within project (not including shared imports)
+                    var projectDuplicates = dup.Where(n => !n.Shared).ToList();
+                    if (projectDuplicates.Count > 1)
+                    {
+                        for (var i = projectDuplicates.Count - 1; i > 0; i--)
+                        {
+                            var reportItem = new ReportItem
+                            {
+                                ProjectName = _projectName,
+                                FullFileName = projectDuplicates[i - 1].FullFileName
+                                               + _splitChar
+                                               + projectDuplicates[i].FullFileName,
+                                Message = $"Event \"{projectDuplicates[i - 1].Value}\" is overridden",
+                                FileType = projectDuplicates[i - 1].FileType
+                                           + _splitChar.ToString()
+                                           + projectDuplicates[i].FileType,
+                                LineId = projectDuplicates[i - 1].LineId
+                                         + _splitChar.ToString()
+                                         + projectDuplicates[i].LineId,
+                                JsonPath = projectDuplicates[i - 1].JsonPath
+                                           + _splitChar
+                                           + projectDuplicates[i].JsonPath,
+                                ValidationType = ValidationTypeEnum.Logic.ToString(),
+                                Severity = ImportanceEnum.Error.ToString(),
+                                Source = methodName
+                            };
+                            report.Add(reportItem);
+                        }
+                    }
+
+                    // overriding shared "id" (project override shared)
+                    var sharedDuplicates = dup.Where(n => n.Shared);
+                    if (sharedDuplicates.Any() && projectDuplicates.Any())
+                    {
+                        var objectMembers = _jsonPropertiesCollection
+                            .Where(n =>
+                                n.ItemType == JsonItemType.Property
+                                && n.FullFileName == sharedDuplicates.Last().FullFileName
+                                && n.ParentPath.Contains(sharedDuplicates.Last().ParentPath + ".actions["));
+                        var actionFound = objectMembers.Any(n => n.Name == "type");
+
+                        if (actionFound)
+                        {
+                            //non-empty shared method override
+                            var reportItem = new ReportItem
+                            {
+                                ProjectName = _projectName,
+                                FullFileName = sharedDuplicates.Last().FullFileName
+                                               + _splitChar
+                                               + projectDuplicates.Last().FullFileName,
+                                Message = $"Shared event \"{sharedDuplicates.Last().Value}\" is overridden",
+                                FileType = sharedDuplicates.Last().FileType
+                                           + _splitChar.ToString()
+                                           + projectDuplicates.Last().FileType,
+                                LineId = sharedDuplicates.Last().LineId
+                                         + _splitChar.ToString()
+                                         + projectDuplicates.Last().LineId,
+                                JsonPath = sharedDuplicates.Last().JsonPath
+                                           + _splitChar
+                                           + projectDuplicates.Last().JsonPath,
+                                ValidationType = ValidationTypeEnum.Logic.ToString(),
+                                Severity = ImportanceEnum.Warning.ToString(),
+                                Source = methodName
+                            };
+                            report.Add(reportItem);
+                        }
+                    }
+                }
+            }
+            return report;
+        }
+
+        internal static IEnumerable<ReportItem> RedundantEvents(string methodName)
+        {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
             var idProjectList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -1488,8 +2032,11 @@ namespace KineticValidator
             return report;
         }
 
-        internal static List<ReportItem> CallNonExistingEvents(string methodName)
+        internal static IEnumerable<ReportItem> CallNonExistingEvents(string methodName)
         {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
             var idProjectList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -1535,399 +2082,11 @@ namespace KineticValidator
             return report;
         }
 
-        internal static List<ReportItem> OverridingEvents(string methodName)
+        internal static IEnumerable<ReportItem> EmptyDataViewNames(string methodName)
         {
-            var duplicateIdsList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Events
-                    && n.Name == "id"
-                    && n.Parent == "events"
-                    && !string.IsNullOrEmpty(n.Value))
-                .GroupBy(n => n.Value)
-                .Where(n => n.Count() > 1);
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
 
-            var report = new List<ReportItem>();
-            if (duplicateIdsList.Any())
-            {
-                foreach (var dup in duplicateIdsList)
-                {
-                    // duplicate "id" within project (not including shared imports)
-                    var projectDuplicates = dup.Where(n => !n.Shared).ToList();
-                    if (projectDuplicates.Count > 1)
-                        for (var i = projectDuplicates.Count - 1; i > 0; i--)
-                        {
-                            var reportItem = new ReportItem
-                            {
-                                ProjectName = _projectName,
-                                FullFileName = projectDuplicates[i - 1].FullFileName
-                                               + _splitChar
-                                               + projectDuplicates[i].FullFileName,
-                                Message = $"Event \"{projectDuplicates[i - 1].Value}\" is overridden",
-                                FileType = projectDuplicates[i - 1].FileType
-                                           + _splitChar.ToString()
-                                           + projectDuplicates[i].FileType,
-                                LineId = projectDuplicates[i - 1].LineId
-                                         + _splitChar.ToString()
-                                         + projectDuplicates[i].LineId,
-                                JsonPath = projectDuplicates[i - 1].JsonPath
-                                           + _splitChar
-                                           + projectDuplicates[i].JsonPath,
-                                ValidationType = ValidationTypeEnum.Logic.ToString(),
-                                Severity = ImportanceEnum.Error.ToString(),
-                                Source = methodName
-                            };
-                            report.Add(reportItem);
-                        }
-
-                    // overriding shared "id" (project override shared)
-                    var sharedDuplicates = dup.Where(n => n.Shared);
-                    if (sharedDuplicates.Any() && projectDuplicates.Any())
-                    {
-                        var objectMembers = _jsonPropertiesCollection
-                            .Where(n =>
-                                n.ItemType == JsonItemType.Property
-                                && n.FullFileName == sharedDuplicates.Last().FullFileName
-                                && n.ParentPath.Contains(sharedDuplicates.Last().ParentPath + ".actions["));
-                        var actionFound = objectMembers.Any(n => n.Name == "type");
-
-                        if (actionFound)
-                        {
-                            //non-empty shared method override
-                            var reportItem = new ReportItem
-                            {
-                                ProjectName = _projectName,
-                                FullFileName = sharedDuplicates.Last().FullFileName
-                                               + _splitChar
-                                               + projectDuplicates.Last().FullFileName,
-                                Message = $"Shared event \"{sharedDuplicates.Last().Value}\" is overridden",
-                                FileType = sharedDuplicates.Last().FileType
-                                           + _splitChar.ToString()
-                                           + projectDuplicates.Last().FileType,
-                                LineId = sharedDuplicates.Last().LineId
-                                         + _splitChar.ToString()
-                                         + projectDuplicates.Last().LineId,
-                                JsonPath = sharedDuplicates.Last().JsonPath
-                                           + _splitChar
-                                           + projectDuplicates.Last().JsonPath,
-                                ValidationType = ValidationTypeEnum.Logic.ToString(),
-                                Severity = ImportanceEnum.Warning.ToString(),
-                                Source = methodName
-                            };
-                            report.Add(reportItem);
-                        }
-                    }
-                }
-            }
-            return report;
-        }
-
-        internal static List<ReportItem> EmptyPatchNames(string methodName)
-        {
-            var emptPatchList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Patch
-                    && !n.Shared
-                    && n.Parent == "patch"
-                    && n.Name == "id"
-                    && string.IsNullOrEmpty(n.Value));
-            var report = new List<ReportItem>();
-            foreach (var patchResource in emptPatchList)
-            {
-                var reportItem = new ReportItem
-                {
-                    ProjectName = _projectName,
-                    FullFileName = patchResource.FullFileName,
-                    FileType = patchResource.FileType.ToString(),
-                    LineId = patchResource.LineId.ToString(),
-                    JsonPath = patchResource.JsonPath,
-                    Message = $"Patch id \"{patchResource.Value}\" is empty",
-                    ValidationType = ValidationTypeEnum.Logic.ToString(),
-                    Severity = ImportanceEnum.Error.ToString(),
-                    Source = methodName
-                };
-                report.Add(reportItem);
-            }
-            return report;
-        }
-
-        internal static Dictionary<string, string> CollectPatchValues()
-        {
-            var patchList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Patch
-                    && n.Parent == "patch"
-                    && n.Name == "id");
-
-            var patchValues = new Dictionary<string, string>();
-            foreach (var item in patchList)
-            {
-                var newValue = _jsonPropertiesCollection
-                    .LastOrDefault(n =>
-                        n.ItemType == JsonItemType.Property
-                        && n.FileType == JsoncContentType.Patch
-                        && n.FullFileName == item.FullFileName
-                        && n.ParentPath == item.ParentPath
-                        && n.Name == "value")
-                    ?.Value;
-
-                var patchName = "%" + item.Value + "%";
-                if (!patchValues.ContainsKey(patchName))
-                    patchValues.Add(patchName, newValue);
-                else
-                    patchValues[patchName] = newValue;
-            }
-
-            var allReplaced = false;
-            do
-            {
-                var toPatch = patchValues.Where(n =>
-                n.Value.Trim().StartsWith("%")
-                && n.Value.Trim().EndsWith("%"));
-
-                allReplaced = true;
-
-                if (toPatch.Any())
-                {
-                    var replaceValues = new Dictionary<string, string>();
-                    foreach (var item in toPatch)
-                        foreach (var patch in patchValues)
-                            if (patch.Key == item.Value)
-                            {
-                                replaceValues.Add(item.Key, patch.Value);
-                                allReplaced = false;
-                                break;
-                            }
-
-                    foreach (var r in replaceValues)
-                        patchValues[r.Key] = r.Value;
-                }
-            } while (!allReplaced);
-
-            return patchValues;
-        }
-
-        internal static List<ReportItem> PossiblePatchValues(string methodName)
-        {
-            if (_patchValues == null || _patchValues.Count == 0)
-                _patchValues = CollectPatchValues();
-
-            var missedPatchList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && n.FileType != JsoncContentType.Patch
-                    && _patchValues.Any(m =>
-                        !string.IsNullOrEmpty(m.Value)
-                        && m.Value == n.Value));
-
-            var report = new List<ReportItem>();
-            foreach (var item in missedPatchList)
-            {
-                var patchlist = _patchValues
-                    .Where(m => m.Value == item.Value)
-                    .Select(n => n.Key);
-                var patchDefinitions = "";
-                foreach (var str in patchlist)
-                {
-                    if (!string.IsNullOrEmpty(patchDefinitions))
-                        patchDefinitions += ", ";
-
-                    patchDefinitions += str;
-                }
-
-                var reportItem = new ReportItem
-                {
-                    ProjectName = _projectName,
-                    FullFileName = item.FullFileName,
-                    FileType = item.FileType.ToString(),
-                    LineId = item.LineId.ToString(),
-                    JsonPath = item.JsonPath,
-                    Message = $"Value \"{item.Value}\" can be replaced with patch(es): {patchDefinitions}",
-                    ValidationType = ValidationTypeEnum.Logic.ToString(),
-                    Severity = ImportanceEnum.Note.ToString(),
-                    Source = methodName
-                };
-                report.Add(reportItem);
-            }
-            return report;
-        }
-
-        internal static List<ReportItem> PatchAllFields(string methodName)
-        {
-            if (_patchValues == null || _patchValues.Count == 0)
-            {
-                _patchValues = CollectPatchValues();
-            }
-
-            var valuesList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && n.Value.Contains('%'));
-
-            if (valuesList.Any())
-            {
-                foreach (var item in valuesList)
-                {
-                    foreach (var patch in _patchValues)
-                    {
-                        item.Value = item.Value.Replace(patch.Key, patch.Value);
-                    }
-                }
-            }
-
-            return new List<ReportItem>();
-        }
-
-        internal static List<ReportItem> RedundantPatches(string methodName)
-        {
-            var patchList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Patch
-                    && !n.Shared
-                    && n.Parent == "patch"
-                    && n.Name == "id"
-                    && !string.IsNullOrEmpty(n.Value));
-            var report = new List<ReportItem>();
-            foreach (var patchResource in patchList)
-            {
-                if (string.IsNullOrEmpty(patchResource.Value))
-                    continue;
-
-                if (!_jsonPropertiesCollection
-                    .Any(n =>
-                        n.ItemType == JsonItemType.Property
-                        && n.FileType != JsoncContentType.Patch
-                        && n.Value.Contains("%" + patchResource.Value + "%")))
-                {
-                    var reportItem = new ReportItem
-                    {
-                        ProjectName = _projectName,
-                        FullFileName = patchResource.FullFileName,
-                        FileType = patchResource.FileType.ToString(),
-                        LineId = patchResource.LineId.ToString(),
-                        JsonPath = patchResource.JsonPath,
-                        Message = $"Patch \"{patchResource.Value}\" is not used in the project",
-                        ValidationType = ValidationTypeEnum.Logic.ToString(),
-                        Severity = ImportanceEnum.Warning.ToString(),
-                        Source = methodName
-                    };
-                    report.Add(reportItem);
-                }
-            }
-            return report;
-        }
-
-        internal static List<ReportItem> CallNonExistingPatches(string methodName)
-        {
-            var patchList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Patch
-                    && n.Parent == "patch"
-                    && n.Name == "id"
-                    && !string.IsNullOrEmpty(n.Value));
-
-            var report = new List<ReportItem>();
-            foreach (var property in _jsonPropertiesCollection)
-            {
-                if (property.ItemType != JsonItemType.Property)
-                    continue;
-
-                var usedPatchList = GetPatchList(property.Value);
-                foreach (var patchItem in usedPatchList)
-                {
-                    if (string.IsNullOrEmpty(patchItem))
-                        continue;
-
-                    if (!_systemMacros.Contains(patchItem)
-                        && !patchList.Any(n => n.Value == patchItem.Trim('%')))
-                    {
-                        var reportItem = new ReportItem
-                        {
-                            ProjectName = _projectName,
-                            FullFileName = property.FullFileName,
-                            FileType = property.FileType.ToString(),
-                            LineId = property.LineId.ToString(),
-                            JsonPath = property.JsonPath,
-                            Message = $"Patch \"{patchItem}\" is not defined in the project",
-                            ValidationType = ValidationTypeEnum.Logic.ToString(),
-                            Severity = ImportanceEnum.Error.ToString(),
-                            Source = methodName
-                        };
-                        report.Add(reportItem);
-                    }
-                }
-            }
-            return report;
-        }
-
-        internal static List<ReportItem> OverridingPatches(string methodName)
-        {
-            var duplicatePatchesList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Patch
-                    && n.Parent == "patch"
-                    && n.Name == "id"
-                    && !string.IsNullOrEmpty(n.Value))
-                .GroupBy(n => n.Value)
-                .Where(n => n.Count() > 1);
-
-            var report = new List<ReportItem>();
-            if (duplicatePatchesList.Any())
-                foreach (var dup in duplicatePatchesList)
-                {
-                    var patchDup = dup.ToArray();
-                    for (var i = 1; i < patchDup.Count(); i++)
-                    {
-                        var oldValue = _jsonPropertiesCollection
-                            .LastOrDefault(n => n.FileType == JsoncContentType.Patch
-                                                && n.FullFileName == patchDup[i - 1].FullFileName
-                                                && n.ParentPath == patchDup[i - 1].ParentPath
-                                                && n.Name == "value");
-                        if (oldValue.Shared)
-                            continue;
-
-                        var newValue = _jsonPropertiesCollection
-                            .LastOrDefault(n => n.FileType == JsoncContentType.Patch
-                                                && n.FullFileName == patchDup[i].FullFileName
-                                                && n.ParentPath == patchDup[i].ParentPath
-                                                && n.Name == "value");
-
-                        if (string.IsNullOrEmpty(oldValue.Value) || oldValue.Value == newValue.Value)
-                            continue;
-
-                        var reportItem = new ReportItem
-                        {
-                            ProjectName = _projectName,
-                            FullFileName = patchDup[i - 1].FullFileName
-                                           + _splitChar
-                                           + patchDup[i].FullFileName,
-                            Message = $"Patch \"{patchDup[i - 1].Value}\" is overridden{Environment.NewLine} [\"{oldValue.Value}\" => \"{newValue.Value}\"]",
-                            FileType = patchDup[i - 1].FileType
-                                       + _splitChar.ToString()
-                                       + patchDup[i].FileType,
-                            LineId = patchDup[i - 1].LineId
-                                     + _splitChar.ToString()
-                                     + patchDup[i].LineId,
-                            JsonPath = patchDup[i - 1].JsonPath
-                                       + _splitChar
-                                       + patchDup[i].JsonPath,
-                            ValidationType = ValidationTypeEnum.Logic.ToString(),
-                            Severity = ImportanceEnum.Error.ToString(),
-                            Source = methodName
-                        };
-                        report.Add(reportItem);
-                    }
-                }
-            return report;
-        }
-
-        internal static List<ReportItem> EmptyDataViewNames(string methodName)
-        {
             var emptyDataViewList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -1957,8 +2116,11 @@ namespace KineticValidator
             return report;
         }
 
-        internal static List<ReportItem> RedundantDataViews(string methodName)
+        internal static IEnumerable<ReportItem> RedundantDataViews(string methodName)
         {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
             var dataViewList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -1995,8 +2157,11 @@ namespace KineticValidator
             return report;
         }
 
-        internal static List<ReportItem> CallNonExistingDataViews(string methodName)
+        internal static IEnumerable<ReportItem> CallNonExistingDataViews(string methodName)
         {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
             var dataViewList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2012,7 +2177,9 @@ namespace KineticValidator
             foreach (var property in _jsonPropertiesCollection)
             {
                 if (property.ItemType != JsonItemType.Property)
+                {
                     continue;
+                }
 
                 var usedDataViewsList = new List<string>();
 
@@ -2048,9 +2215,13 @@ namespace KineticValidator
                 else if (property.Name == "epBinding" && !string.IsNullOrEmpty(property.Value))
                 {
                     if (property.Value.Contains('.'))
+                    {
                         usedDataViewsList = GetTableField(property.Value);
+                    }
                     else
+                    {
                         usedDataViewsList.Add(property.Value + ".");
+                    }
                 }
                 else if (!string.IsNullOrEmpty(property.Value))
                 {
@@ -2060,7 +2231,9 @@ namespace KineticValidator
                 foreach (var dataViewItem in usedDataViewsList)
                 {
                     if (string.IsNullOrEmpty(dataViewItem))
+                    {
                         continue;
+                    }
 
                     var viewName = dataViewItem.Substring(0, dataViewItem.IndexOf('.'));
                     if (!_systemDataViews.Contains(viewName)
@@ -2086,65 +2259,11 @@ namespace KineticValidator
             return report;
         }
 
-        internal static List<ReportItem> CallNonExistingDataTables(string methodName)
+        internal static IEnumerable<ReportItem> OverridingDataViews(string methodName)
         {
-            var dataTableList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.DataViews
-                    && n.Parent == "dataviews"
-                    && n.Name == "table"
-                    && !string.IsNullOrEmpty(n.Value)).Select(n => n.Value).Distinct();
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
 
-            var report = new List<ReportItem>();
-            foreach (var property in _jsonPropertiesCollection)
-            {
-                if (property.ItemType != JsonItemType.Property)
-                    continue;
-
-                var usedDataTable = "";
-
-                if (property.FileType == JsoncContentType.Events
-                         && property.Parent == "trigger"
-                         && property.Name == "target"
-                         && !string.IsNullOrEmpty(property.Value)
-                         && !property.Value.Contains('.')
-                         && _jsonPropertiesCollection.Any(m =>
-                             m.ItemType == JsonItemType.Property
-                             && m.FullFileName == property.FullFileName
-                             && m.ParentPath == property.ParentPath
-                             && m.Name == "type"
-                             && m.Value == "DataTable"))
-                {
-                    usedDataTable = property.Value;
-                }
-
-                if (string.IsNullOrEmpty(usedDataTable))
-                    continue;
-
-                if (!usedDataTable.StartsWith("%")
-                    && !dataTableList.Contains(usedDataTable))
-                {
-                    var reportItem = new ReportItem
-                    {
-                        ProjectName = _projectName,
-                        FullFileName = property.FullFileName,
-                        FileType = property.FileType.ToString(),
-                        LineId = property.LineId.ToString(),
-                        JsonPath = property.JsonPath,
-                        Message = $"DataTable \"{usedDataTable}\" is not defined in the project",
-                        ValidationType = ValidationTypeEnum.Logic.ToString(),
-                        Severity = ImportanceEnum.Error.ToString(),
-                        Source = methodName
-                    };
-                    report.Add(reportItem);
-                }
-            }
-            return report;
-        }
-
-        internal static List<ReportItem> OverridingDataViews(string methodName)
-        {
             var duplicateViewsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2157,6 +2276,7 @@ namespace KineticValidator
 
             var report = new List<ReportItem>();
             if (duplicateViewsList.Any())
+            {
                 foreach (var dup in duplicateViewsList)
                 {
                     var viewDup = dup.ToArray();
@@ -2185,11 +2305,80 @@ namespace KineticValidator
                         report.Add(reportItem);
                     }
                 }
+            }
+
             return report;
         }
 
-        internal static List<ReportItem> EmptyRuleNames(string methodName)
+        internal static IEnumerable<ReportItem> CallNonExistingDataTables(string methodName)
         {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
+            var dataTableList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType == JsoncContentType.DataViews
+                    && n.Parent == "dataviews"
+                    && n.Name == "table"
+                    && !string.IsNullOrEmpty(n.Value)).Select(n => n.Value).Distinct();
+
+            var report = new List<ReportItem>();
+            foreach (var property in _jsonPropertiesCollection)
+            {
+                if (property.ItemType != JsonItemType.Property)
+                {
+                    continue;
+                }
+
+                var usedDataTable = "";
+
+                if (property.FileType == JsoncContentType.Events
+                         && property.Parent == "trigger"
+                         && property.Name == "target"
+                         && !string.IsNullOrEmpty(property.Value)
+                         && !property.Value.Contains('.')
+                         && _jsonPropertiesCollection.Any(m =>
+                             m.ItemType == JsonItemType.Property
+                             && m.FullFileName == property.FullFileName
+                             && m.ParentPath == property.ParentPath
+                             && m.Name == "type"
+                             && m.Value == "DataTable"))
+                {
+                    usedDataTable = property.Value;
+                }
+
+                if (string.IsNullOrEmpty(usedDataTable))
+                {
+                    continue;
+                }
+
+                if (!usedDataTable.StartsWith("%")
+                    && !dataTableList.Contains(usedDataTable))
+                {
+                    var reportItem = new ReportItem
+                    {
+                        ProjectName = _projectName,
+                        FullFileName = property.FullFileName,
+                        FileType = property.FileType.ToString(),
+                        LineId = property.LineId.ToString(),
+                        JsonPath = property.JsonPath,
+                        Message = $"DataTable \"{usedDataTable}\" is not defined in the project",
+                        ValidationType = ValidationTypeEnum.Logic.ToString(),
+                        Severity = ImportanceEnum.Error.ToString(),
+                        Source = methodName
+                    };
+                    report.Add(reportItem);
+                }
+            }
+            return report;
+        }
+
+        internal static IEnumerable<ReportItem> EmptyRuleNames(string methodName)
+        {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
             var emptyRulesList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2218,8 +2407,11 @@ namespace KineticValidator
             return report;
         }
 
-        internal static List<ReportItem> OverridingRules(string methodName)
+        internal static IEnumerable<ReportItem> OverridingRules(string methodName)
         {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
             var duplicateRulesList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2265,8 +2457,11 @@ namespace KineticValidator
             return report;
         }
 
-        internal static List<ReportItem> EmptyToolNames(string methodName)
+        internal static IEnumerable<ReportItem> EmptyToolNames(string methodName)
         {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
             var emptyToolsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2295,8 +2490,11 @@ namespace KineticValidator
             return report;
         }
 
-        internal static List<ReportItem> OverridingTools(string methodName)
+        internal static IEnumerable<ReportItem> OverridingTools(string methodName)
         {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
             var duplicateToolsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2309,6 +2507,7 @@ namespace KineticValidator
 
             var report = new List<ReportItem>();
             if (duplicateToolsList.Any())
+            {
                 foreach (var dup in duplicateToolsList)
                 {
                     var toolDup = dup.ToArray();
@@ -2337,108 +2536,16 @@ namespace KineticValidator
                         report.Add(reportItem);
                     }
                 }
-            return report;
-        }
-
-        internal static List<ReportItem> MissingSearches(string methodName)
-        {
-            var searchesList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Events
-                    && n.Name == "like"
-                    && !string.IsNullOrEmpty(n.Value)
-                    && n.Parent == "searchOptions"
-                    && _jsonPropertiesCollection.Any(m =>
-                        m.ItemType == JsonItemType.Property
-                        && m.Name == "searchForm"
-                        && m.FullFileName == n.FullFileName
-                        && m.FileType == JsoncContentType.Events
-                        && m.ParentPath == n.ParentPath));
-
-            var report = new List<ReportItem>();
-            foreach (var form in searchesList)
-            {
-                var formSubFolder = _jsonPropertiesCollection
-                    .Where(m =>
-                        m.ItemType == JsonItemType.Property
-                        && m.Name == "searchForm"
-                        && !string.IsNullOrEmpty(m.Value)
-                        && m.FullFileName == form.FullFileName
-                        && m.FileType == JsoncContentType.Events
-                        && m.ParentPath == form.ParentPath);
-
-                if (!formSubFolder.Any())
-                    continue;
-
-                var searchName = form.Value
-                    + "\\"
-                    + formSubFolder.FirstOrDefault().Value;
-                var searchFile = "";
-                if (_folderType == FolderType.Unknown)
-                {
-                    var reportItem = new ReportItem
-                    {
-                        ProjectName = _projectName,
-                        FullFileName = form.FullFileName,
-                        Message = "Folder type not recognized (Deployment/Repository/...)",
-                        FileType = form.FileType.ToString(),
-                        LineId = form.LineId.ToString(),
-                        JsonPath = form.JsonPath,
-                        ValidationType = ValidationTypeEnum.Logic.ToString(),
-                        Severity = ImportanceEnum.Warning.ToString(),
-                        Source = methodName
-                    };
-                    report.Add(reportItem);
-
-                    searchFile = _projectPath
-                        + "\\..\\Shared\\search\\"
-                        + searchName
-                        + "\\search.jsonc";
-                }
-                else if (_folderType == FolderType.Deployment)
-                {
-                    searchFile = _projectPath
-                        + "\\..\\Shared\\search\\"
-                        + searchName
-                        + "\\search.jsonc";
-                }
-                else
-                {
-                    if (_folderType == FolderType.IceRepository)
-                        searchFile = _projectPath
-                            + "\\..\\..\\..\\Shared\\search\\"
-                            + searchName
-                            + "\\search.jsonc";
-                    else
-                        searchFile = _projectPath
-                            + "\\..\\..\\Shared\\search\\"
-                            + searchName
-                            + "\\search.jsonc";
-                }
-
-                if (!File.Exists(searchFile))
-                {
-                    var reportItem = new ReportItem
-                    {
-                        ProjectName = _projectName,
-                        FullFileName = form.FullFileName,
-                        Message = $"Call to non-existing search \"{searchName}\"",
-                        FileType = form.FileType.ToString(),
-                        LineId = form.LineId.ToString(),
-                        JsonPath = form.JsonPath,
-                        ValidationType = ValidationTypeEnum.Logic.ToString(),
-                        Severity = ImportanceEnum.Error.ToString(),
-                        Source = methodName
-                    };
-                    report.Add(reportItem);
-                }
             }
+
             return report;
         }
 
-        internal static List<ReportItem> MissingForms(string methodName)
+        internal static IEnumerable<ReportItem> MissingForms(string methodName)
         {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
             var formsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2543,11 +2650,122 @@ namespace KineticValidator
                     report.Add(reportItem);
                 }
             }
+
             return report;
         }
 
-        internal static List<ReportItem> JsCode(string methodName)
+        internal static IEnumerable<ReportItem> MissingSearches(string methodName)
         {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
+            var searchesList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType == JsoncContentType.Events
+                    && n.Name == "like"
+                    && !string.IsNullOrEmpty(n.Value)
+                    && n.Parent == "searchOptions"
+                    && _jsonPropertiesCollection.Any(m =>
+                        m.ItemType == JsonItemType.Property
+                        && m.Name == "searchForm"
+                        && m.FullFileName == n.FullFileName
+                        && m.FileType == JsoncContentType.Events
+                        && m.ParentPath == n.ParentPath));
+
+            var report = new List<ReportItem>();
+            foreach (var form in searchesList)
+            {
+                var formSubFolder = _jsonPropertiesCollection
+                    .Where(m =>
+                        m.ItemType == JsonItemType.Property
+                        && m.Name == "searchForm"
+                        && !string.IsNullOrEmpty(m.Value)
+                        && m.FullFileName == form.FullFileName
+                        && m.FileType == JsoncContentType.Events
+                        && m.ParentPath == form.ParentPath);
+
+                if (!formSubFolder.Any())
+                {
+                    continue;
+                }
+
+                var searchName = form.Value
+                    + "\\"
+                    + formSubFolder.FirstOrDefault().Value;
+                var searchFile = "";
+                if (_folderType == FolderType.Unknown)
+                {
+                    var reportItem = new ReportItem
+                    {
+                        ProjectName = _projectName,
+                        FullFileName = form.FullFileName,
+                        Message = "Folder type not recognized (Deployment/Repository/...)",
+                        FileType = form.FileType.ToString(),
+                        LineId = form.LineId.ToString(),
+                        JsonPath = form.JsonPath,
+                        ValidationType = ValidationTypeEnum.Logic.ToString(),
+                        Severity = ImportanceEnum.Warning.ToString(),
+                        Source = methodName
+                    };
+                    report.Add(reportItem);
+
+                    searchFile = _projectPath
+                        + "\\..\\Shared\\search\\"
+                        + searchName
+                        + "\\search.jsonc";
+                }
+                else if (_folderType == FolderType.Deployment)
+                {
+                    searchFile = _projectPath
+                        + "\\..\\Shared\\search\\"
+                        + searchName
+                        + "\\search.jsonc";
+                }
+                else
+                {
+                    if (_folderType == FolderType.IceRepository)
+                    {
+                        searchFile = _projectPath
+                            + "\\..\\..\\..\\Shared\\search\\"
+                            + searchName
+                            + "\\search.jsonc";
+                    }
+                    else
+                    {
+                        searchFile = _projectPath
+                            + "\\..\\..\\Shared\\search\\"
+                            + searchName
+                            + "\\search.jsonc";
+                    }
+                }
+
+                if (!File.Exists(searchFile))
+                {
+                    var reportItem = new ReportItem
+                    {
+                        ProjectName = _projectName,
+                        FullFileName = form.FullFileName,
+                        Message = $"Call to non-existing search \"{searchName}\"",
+                        FileType = form.FileType.ToString(),
+                        LineId = form.LineId.ToString(),
+                        JsonPath = form.JsonPath,
+                        ValidationType = ValidationTypeEnum.Logic.ToString(),
+                        Severity = ImportanceEnum.Error.ToString(),
+                        Source = methodName
+                    };
+                    report.Add(reportItem);
+                }
+            }
+
+            return report;
+        }
+
+        internal static IEnumerable<ReportItem> JsCode(string methodName)
+        {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
             var jsPatternsList = _jsonPropertiesCollection
                 .Where(n =>
                     !n.Shared
@@ -2571,11 +2789,15 @@ namespace KineticValidator
                 };
                 report.Add(reportItem);
             }
+
             return report;
         }
 
-        internal static List<ReportItem> JsDataViewCount(string methodName)
+        internal static IEnumerable<ReportItem> JsDataViewCount(string methodName)
         {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
             var jsPatternsList = _jsonPropertiesCollection
                 .Where(n =>
                     !n.Shared
@@ -2600,11 +2822,15 @@ namespace KineticValidator
                 };
                 report.Add(reportItem);
             }
+
             return report;
         }
 
-        internal static List<ReportItem> MissingLayoutIds(string methodName)
+        internal static IEnumerable<ReportItem> MissingLayoutIds(string methodName)
         {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
             var layoutIdList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2646,11 +2872,15 @@ namespace KineticValidator
 
                 report.Add(reportItem);
             }
+
             return report;
         }
 
-        internal static List<ReportItem> IncorrectLayoutIds(string methodName)
+        internal static IEnumerable<ReportItem> IncorrectLayoutIds(string methodName)
         {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
             var layoutIdList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2704,11 +2934,15 @@ namespace KineticValidator
 
                 report.Add(reportItem);
             }
+
             return report;
         }
 
-        internal static List<ReportItem> IncorrectDVContitionViewName(string methodName)
+        internal static IEnumerable<ReportItem> IncorrectDVContitionViewName(string methodName)
         {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
             var dvConditionsList = _jsonPropertiesCollection
                 .Where(n =>
                     !n.Shared
@@ -2752,6 +2986,7 @@ namespace KineticValidator
                     };
                     report.Add(reportItem);
                 }
+
                 if (dvName[0].Value == resultDvName[0].Value)
                 {
                     var reportItem = new ReportItem
@@ -2769,11 +3004,15 @@ namespace KineticValidator
                     report.Add(reportItem);
                 }
             }
+
             return report;
         }
 
-        internal static List<ReportItem> IncorrectTabIds(string methodName)
+        internal static IEnumerable<ReportItem> IncorrectTabIds(string methodName)
         {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
             var tabIdsList = _jsonPropertiesCollection
                 .Where(n =>
                     !n.Shared
@@ -2823,11 +3062,15 @@ namespace KineticValidator
                     }
                 }
             }
+
             return report;
         }
 
-        internal static List<ReportItem> IncorrectRestCalls(string methodName)
+        internal static IEnumerable<ReportItem> IncorrectRestCalls(string methodName)
         {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
             var restCallsList = _jsonPropertiesCollection
                 .Where(n =>
                     !n.Shared
@@ -2979,7 +3222,9 @@ namespace KineticValidator
                     foreach (var par in methodParamsList)
                     {
                         if (IsPatch(par.Value) || IsTableField(par.Value) || HasJsCode(par.Value))
+                        {
                             continue;
+                        }
 
                         if (!serverParams.parameters.Contains(par.Value))
                         {
@@ -3036,8 +3281,48 @@ namespace KineticValidator
                 }
 
             }
+
             return report;
         }
+
+        internal static IEnumerable<ReportItem> DuplicateGUIDs(string methodName)
+        {
+            while (_patchAllFields && !_allFieldsPatched)
+            { }
+
+            var report = new List<ReportItem>();
+
+            var item2 = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType == JsoncContentType.Layout
+                    && n.Name == "guid").GroupBy(n => n.Value).Where(n => n.Count() > 1);
+
+            var guidList = item2 as IGrouping<string, JsonProperty>[] ?? item2.ToArray();
+
+            if (guidList.Any())
+            {
+                foreach (var dup in guidList)
+                {
+                    var reportItem = new ReportItem
+                    {
+                        ProjectName = _projectName,
+                        FullFileName = dup.FirstOrDefault().FullFileName,
+                        Message = $"Project has duplicate GUID \"{dup.FirstOrDefault().Value}\"",
+                        FileType = dup.FirstOrDefault().FileType.ToString(),
+                        LineId = dup.FirstOrDefault().LineId.ToString(),
+                        JsonPath = dup.FirstOrDefault().JsonPath,
+                        ValidationType = ValidationTypeEnum.Parse.ToString(),
+                        Severity = ImportanceEnum.Warning.ToString(),
+                        Source = methodName
+                    };
+                    report.Add(reportItem);
+                }
+            }
+
+            return report;
+        }
+
         #endregion
         // misprints in property/dataview/string/id names (try finding lower-case property in schema or project scope)
         // searches must use only one dataview

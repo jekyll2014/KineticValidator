@@ -61,22 +61,29 @@ namespace KineticValidator
 
         public static List<T> LoadJson<T>(string fileName)
         {
-            if (string.IsNullOrEmpty(fileName))
-                return new List<T>();
+            List<T> newValues = new List<T>();
 
-            List<T> newValues;
+            if (string.IsNullOrEmpty(fileName))
+                return newValues;
+
             try
             {
+                if (!File.Exists(fileName))
+                {
+                    return newValues;
+                }
+
                 var jsonSerializer = new DataContractJsonSerializer(typeof(List<T>));
                 var fileStream = File.Open(fileName, FileMode.Open);
 
                 newValues = (List<T>)jsonSerializer.ReadObject(fileStream);
                 fileStream.Close();
                 fileStream.Dispose();
+
             }
             catch
             {
-                return new List<T>();
+                return newValues;
             }
 
             return newValues;

@@ -1,1 +1,12 @@
 1) игнорить перекрытие патчей, если они ссылаются на другие патчи.
+2) проверять dataset/datatable/fields
+typesSafely[] - Name.EndsWith("SvcContract")
+  Module
+    Assembly
+      DefinedTypes[] 
+                поля - BaseType.Name = "DataRow"
+                         DeclaredProperties[]
+             таблицы - BaseType.Name = "DataTable"
+                       && .EndsWith("DataTable")
+           тэйблсеты - BaseType.Name = "DataSet"
+                         DeclaredProperties[].Where(PropertyType.BaseType.Name = "DataTable")

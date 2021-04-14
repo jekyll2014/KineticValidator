@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 
 using NJsonSchema.Validation;
@@ -36,6 +38,7 @@ namespace KineticValidator
         public List<ContentTypeItem> FileTypes;
         public bool IgnoreHttpsError;
         public bool SkipSchemaErrors;
+        public bool PatchAllFields;
         public string[] SystemMacros;
         public string[] SystemDataViews;
         public List<ValidationErrorKind> SuppressSchemaErrors;
@@ -51,11 +54,11 @@ namespace KineticValidator
 
     internal class SeedData
     {
-        public Dictionary<string, string> ProcessedFilesList;
-        public List<JsonProperty> JsonPropertiesCollection;
-        public List<ReportItem> RunValidationReportsCollection;
-        public List<ReportItem> DeserializeFileReportsCollection;
-        public List<ReportItem> ParseJsonObjectReportsCollection;
+        public ConcurrentDictionary<string, string> ProcessedFilesList;
+        public IEnumerable<JsonProperty> JsonPropertiesCollection;
+        public IEnumerable<ReportItem> RunValidationReportsCollection;
+        public IEnumerable<ReportItem> DeserializeFileReportsCollection;
+        public IEnumerable<ReportItem> ParseJsonObjectReportsCollection;
     }
 
     internal static class Utilities
@@ -76,7 +79,7 @@ namespace KineticValidator
             return !fullFileName.Contains(projectPath);
         }
 
-        internal static JsoncContentType GetFileTypeFromFileName(string fullFileName, List<ContentTypeItem> _fileTypes)
+        internal static JsoncContentType GetFileTypeFromFileName(string fullFileName, IEnumerable<ContentTypeItem> _fileTypes)
         {
             var fileType = JsoncContentType.Unknown;
             var shortFileName = GetShortFileName(fullFileName);
@@ -106,6 +109,20 @@ namespace KineticValidator
             if (i + 1 >= 0 && longFileName.Length > i + 1)
                 return i < 0 ? longFileName : longFileName.Substring(i + 1);
             return longFileName;
+        }
+
+        private static readonly object lockDevLogFile = new object();
+        internal static void SaveDevLog(string text)
+        {
+            lock (lockDevLogFile)
+            {
+                try
+                {
+                    File.AppendAllText("DeveloperLog.txt", text);
+                }
+                catch
+                { }
+            }
         }
     }
 }
