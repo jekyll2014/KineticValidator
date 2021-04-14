@@ -693,7 +693,7 @@ namespace KineticValidator
                 var errorList = GetErrorList(_projectName, error);
                 if (_skipSchemaErrors && _suppressSchemaErrors.Contains(error.Kind))
                 {
-                    Utilities.SaveDevLog(errorText);
+                    //Utilities.SaveDevLog(errorText);
                 }
                 else
                 {

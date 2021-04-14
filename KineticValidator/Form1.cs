@@ -900,7 +900,7 @@ namespace KineticValidator
             SetStatus("Searching project files...");
             // collect default project file list
             var _filesList = new List<string>();
-            BlockingCollection<ReportItem> _RunValidationReportsCollection = new BlockingCollection<ReportItem>();
+            var _RunValidationReportsCollection = new BlockingCollection<ReportItem>();
             foreach (var file in _initialProjectFiles)
             {
                 var fullFileName = _projectPath + "\\" + file;
@@ -947,8 +947,8 @@ namespace KineticValidator
             // parse all project files and include imports
             SetStatus($"Parsing {_filesList.Count} files]");
             var _processedFilesList = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            BlockingCollection<ReportItem> _DeserializeFileReportsCollection = new BlockingCollection<ReportItem>();
-            BlockingCollection<ReportItem> _ParseJsonObjectReportsCollection = new BlockingCollection<ReportItem>();
+            var _DeserializeFileReportsCollection = new BlockingCollection<ReportItem>();
+            var _ParseJsonObjectReportsCollection = new BlockingCollection<ReportItem>();
             Parallel.ForEach(_filesList, fileName =>
             {
                 var fileType = Utilities.GetFileTypeFromFileName(fileName, _fileTypes);
@@ -993,7 +993,6 @@ namespace KineticValidator
                 _RunValidationReportsCollection,
                 _processedFilesList,
                 fullInit);
-
             // run every validator selected
             var reportsCollection = new BlockingCollection<ReportItem>();
             Parallel.ForEach(_validatorsListNoPatch, validator =>
