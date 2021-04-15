@@ -35,7 +35,7 @@ namespace KineticValidator
         [DataMember] ValidationType,
         [DataMember] Source,
         [DataMember] Severity,
-        [DataMember] FullFileName,
+        [DataMember] FullFileName
     }
 
     [DataContract]
@@ -80,28 +80,32 @@ namespace KineticValidator
         public string ToText()
         {
             var text =
-            "{" + Environment.NewLine +
-            "\tProjectName: " + ProjectName + Environment.NewLine +
-            "\tFullFileName: " + FullFileName + Environment.NewLine +
-            "\tFileType: " + FileType + Environment.NewLine +
-            "\tMessage: " + Message + Environment.NewLine +
-            "\tLineId: " + LineId + Environment.NewLine +
-            "\tJsonPath: " + JsonPath + Environment.NewLine +
-            "\tImportance: " + Severity + Environment.NewLine +
-            "\tValidationType: " + ValidationType + Environment.NewLine +
-            "\tSource: " + Source + Environment.NewLine +
-            "}";
-            return text.ToString();
+                "{" + Environment.NewLine +
+                "\tProjectName: " + ProjectName + Environment.NewLine +
+                "\tFullFileName: " + FullFileName + Environment.NewLine +
+                "\tFileType: " + FileType + Environment.NewLine +
+                "\tMessage: " + Message + Environment.NewLine +
+                "\tLineId: " + LineId + Environment.NewLine +
+                "\tJsonPath: " + JsonPath + Environment.NewLine +
+                "\tImportance: " + Severity + Environment.NewLine +
+                "\tValidationType: " + ValidationType + Environment.NewLine +
+                "\tSource: " + Source + Environment.NewLine +
+                "}";
+            return text;
         }
 
         public bool Equals(ReportItem item)
         {
             return (FileType == item.FileType || string.IsNullOrEmpty(FileType) || string.IsNullOrEmpty(item.FileType))
-                   && (FullFileName == item.FullFileName || string.IsNullOrEmpty(FullFileName) || string.IsNullOrEmpty(item.FullFileName))
+                   && (FullFileName == item.FullFileName || string.IsNullOrEmpty(FullFileName) ||
+                       string.IsNullOrEmpty(item.FullFileName))
                    && (Message == item.Message || string.IsNullOrEmpty(Message) || string.IsNullOrEmpty(item.Message))
-                   && (JsonPath == item.JsonPath || string.IsNullOrEmpty(JsonPath) || string.IsNullOrEmpty(item.JsonPath))
-                   && (ValidationType == item.ValidationType || string.IsNullOrEmpty(ValidationType) || string.IsNullOrEmpty(item.ValidationType))
-                   && (Severity == item.Severity || string.IsNullOrEmpty(Severity) || string.IsNullOrEmpty(item.Severity));
+                   && (JsonPath == item.JsonPath || string.IsNullOrEmpty(JsonPath) ||
+                       string.IsNullOrEmpty(item.JsonPath))
+                   && (ValidationType == item.ValidationType || string.IsNullOrEmpty(ValidationType) ||
+                       string.IsNullOrEmpty(item.ValidationType))
+                   && (Severity == item.Severity || string.IsNullOrEmpty(Severity) ||
+                       string.IsNullOrEmpty(item.Severity));
         }
     }
 }

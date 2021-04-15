@@ -27,6 +27,7 @@ namespace KineticValidator
             public string Name = "";
             public string Value = "";
             public PropertyType Type = PropertyType.Empty;
+
             public int Length
             {
                 get
@@ -42,15 +43,16 @@ namespace KineticValidator
         private static string _jsonText = "";
         private static List<ParsedProperty> _pathIndex = new List<ParsedProperty>();
 
-        private static readonly char[] EscapeChars = { '\"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u' };
+        private static readonly char[] EscapeChars = {'\"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'};
         private static readonly char[] TokenOrNumber = "-0123456789.truefalsenull".ToCharArray().ToArray();
 
-        private static bool _skipComents = false;
-        private static bool _errorFound = false;
+        private static bool _skipComments;
+        private static bool _errorFound;
 
-        public static List<ParsedProperty> ParseJsonPathsStr(string json, out int pos, out bool errorFound, bool skipComments = false)
+        public static List<ParsedProperty> ParseJsonPathsStr(string json, out int pos, out bool errorFound,
+            bool skipComments = false)
         {
-            _skipComents = skipComments;
+            _skipComments = skipComments;
             _jsonText = json;
             pos = 0;
             _errorFound = false;
@@ -93,7 +95,7 @@ namespace KineticValidator
 
         public static List<ParsedProperty> ParseJsonPathsStr(string json, bool skipComments = false)
         {
-            ParseJsonPathsStr(json, out int _, out bool _, skipComments);
+            ParseJsonPathsStr(json, out var _, out var _, skipComments);
 
             return _pathIndex;
         }
@@ -101,7 +103,7 @@ namespace KineticValidator
         private static int FindStartOfNextToken(int pos, out PropertyType foundObjectType)
         {
             foundObjectType = PropertyType.Empty;
-            var allowedChars = new List<char> { ' ', '\t', '\r', '\n', ',' };
+            var allowedChars = new List<char> {' ', '\t', '\r', '\n', ','};
             var tokenOrNumber = "-0123456789.truefalsenull".ToCharArray().ToList();
 
             for (; pos < _jsonText.Length; pos++)
@@ -156,8 +158,10 @@ namespace KineticValidator
                 Path = currentPath,
                 Name = ""
             };
-            if (!_skipComents)
+            if (!_skipComments)
+            {
                 _pathIndex.Add(newElement);
+            }
 
             pos++;
 
@@ -180,6 +184,7 @@ namespace KineticValidator
                     }
 
                     for (; pos < _jsonText.Length; pos++)
+                    {
                         if (_jsonText[pos] == '\r' || _jsonText[pos] == '\n') //end of comment
                         {
                             pos--;
@@ -188,6 +193,7 @@ namespace KineticValidator
                                 newElement.EndPosition - newElement.StartPosition + 1);
                             return pos;
                         }
+                    }
 
                     return pos;
                 }
@@ -202,6 +208,7 @@ namespace KineticValidator
                     }
 
                     for (; pos < _jsonText.Length; pos++)
+                    {
                         if (_jsonText[pos] == '*') // possible end of comment
                         {
                             pos++;
@@ -222,6 +229,7 @@ namespace KineticValidator
 
                             pos--;
                         }
+                    }
 
                     break;
                 }
@@ -233,7 +241,7 @@ namespace KineticValidator
 
         private static int GetPropertyName(int pos, string currentPath)
         {
-            var incorrectChars = new List<char> { '\r', '\n' };
+            var incorrectChars = new List<char> {'\r', '\n'};
 
             var newElement = new ParsedProperty
             {
@@ -279,10 +287,7 @@ namespace KineticValidator
                     }
 
                     pos = GetPropertyDivider(pos, currentPath);
-                    if (_errorFound)
-                    {
-                        return pos;
-                    }
+                    if (_errorFound) return pos;
 
                     if (_jsonText[pos] == ',' || _jsonText[pos] == ']') // it's a list of values
                     {
@@ -304,15 +309,16 @@ namespace KineticValidator
 
                     var valueStartPosition = pos;
                     pos = GetPropertyValue(pos, currentPath);
-                    if (_errorFound)
-                    {
-                        return pos;
-                    }
+                    if (_errorFound) return pos;
 
                     if (string.IsNullOrEmpty(currentPath))
+                    {
                         currentPath = newElement.Name;
+                    }
                     else
+                    {
                         currentPath += "." + newElement.Name;
+                    }
 
                     newElement.Path = currentPath;
                     switch (_jsonText[pos])
@@ -322,10 +328,7 @@ namespace KineticValidator
                             newElement.Type = PropertyType.Object;
                             newElement.Value = "";
                             newElement.EndPosition = pos = GetObject(pos, currentPath, false);
-                            if (_errorFound)
-                            {
-                                return pos;
-                            }
+                            if (_errorFound) return pos;
 
                             return pos;
                         //it's an array
@@ -333,10 +336,7 @@ namespace KineticValidator
                             newElement.Type = PropertyType.Array;
                             newElement.Value = "";
                             newElement.EndPosition = pos = GetArray(pos, currentPath);
-                            if (_errorFound)
-                            {
-                                return pos;
-                            }
+                            if (_errorFound) return pos;
                             return pos;
                         // it's a property
                         default:
@@ -366,7 +366,7 @@ namespace KineticValidator
             };
             _pathIndex.Add(newElement);
 
-            var endingChars = new List<char> { ',', ']', '\r', '\n', '/' };
+            var endingChars = new List<char> {',', ']', '\r', '\n', '/'};
 
             for (; pos < _jsonText.Length; pos++) // searching for property name end
             {
@@ -392,7 +392,6 @@ namespace KineticValidator
                     newElement.EndPosition = pos;
                     newElement.Path = currentPath;
 
-
                     return pos;
                 }
 
@@ -409,17 +408,14 @@ namespace KineticValidator
 
         private static bool IsNumeric(string str)
         {
-            foreach (var c in str)
-                if ((c < '0' || c > '9') && c != '.' && c != '-')
-                    return false;
-
-            return true;
+            return str.All(c => (c >= '0' && c <= '9') || c == '.' || c == '-');
         }
 
         private static int GetPropertyDivider(int pos, string currentPath)
         {
-            var allowedChars = new List<char> { ' ', '\t', '\r', '\n' };
+            var allowedChars = new List<char> {' ', '\t', '\r', '\n'};
             for (; pos < _jsonText.Length; pos++)
+            {
                 switch (_jsonText[pos])
                 {
                     case ':':
@@ -437,6 +433,7 @@ namespace KineticValidator
                         }
                         break;
                 }
+            }
 
             _errorFound = true;
             return pos;
@@ -444,8 +441,9 @@ namespace KineticValidator
 
         private static int GetPropertyValue(int pos, string currentPath)
         {
-            var allowedChars = new[] { ' ', '\t', '\r', '\n' };
+            var allowedChars = new[] {' ', '\t', '\r', '\n'};
             for (; pos < _jsonText.Length; pos++)
+            {
                 switch (_jsonText[pos])
                 {
                     case '[':
@@ -460,9 +458,10 @@ namespace KineticValidator
                     case '\"':
                     {
                         pos++;
-                        var incorrectChars = new List<char> { '\r', '\n' }; // to be added
+                        var incorrectChars = new List<char> {'\r', '\n'}; // to be added
 
                         for (; pos < _jsonText.Length; pos++)
+                        {
                             if (_jsonText[pos] == '\\') //skip escape chars
                             {
                                 pos++;
@@ -492,6 +491,7 @@ namespace KineticValidator
                                 _errorFound = true;
                                 return pos;
                             }
+                        }
 
                         _errorFound = true;
                         return pos;
@@ -499,7 +499,7 @@ namespace KineticValidator
                     default:
                         if (!allowedChars.Contains(_jsonText[pos])) // it's a property non-string value
                         {
-                            var endingChars = new[] { ',', ']', '}', ' ', '\t', '\r', '\n', '/' };
+                            var endingChars = new[] {',', ']', '}', ' ', '\t', '\r', '\n', '/'};
                             var allowedValueChars = "-0123456789.truefalsenull".ToCharArray();
 
                             for (; pos < _jsonText.Length; pos++)
@@ -517,9 +517,9 @@ namespace KineticValidator
                                 }
                             }
                         }
-
                         break;
                 }
+            }
 
             _errorFound = true;
             return pos;
@@ -531,15 +531,10 @@ namespace KineticValidator
             var arrayIndex = 0;
             for (; pos < _jsonText.Length; pos++)
             {
-                if (_errorFound)
-                {
-                    return pos;
-                }
+                if (_errorFound) return pos;
+
                 pos = FindStartOfNextToken(pos, out var foundObjectType);
-                if (_errorFound)
-                {
-                    return pos;
-                }
+                if (_errorFound) return pos;
 
                 switch (foundObjectType)
                 {
@@ -590,16 +585,10 @@ namespace KineticValidator
 
             for (; pos < _jsonText.Length; pos++)
             {
-                if (_errorFound)
-                {
-                    return pos;
-                }
+                if (_errorFound) return pos;
 
                 pos = FindStartOfNextToken(pos, out var foundObjectType);
-                if (_errorFound)
-                {
-                    return pos;
-                }
+                if (_errorFound) return pos;
 
                 switch (foundObjectType)
                 {

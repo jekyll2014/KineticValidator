@@ -45,13 +45,13 @@ namespace KineticValidator
 
         // Indicators 0-7 could be in use by a lexer
         // so we'll use indicator 8 to highlight words.
-        const int INDICATOR_NUM = 8;
+        private const int INDICATOR_NUM = 8;
 
         private Scintilla _textArea = new Scintilla();
         private readonly string _text = "";
         private string _fileName = "";
-        public bool singleLineBrackets = false;
-        private bool _multipleSearchActive = false;
+        public bool SingleLineBrackets = false;
+        private bool _multipleSearchActive;
 
         public string EditorText
         {
@@ -156,7 +156,7 @@ namespace KineticValidator
             // INIT HOTKEYS
             InitHotkeys();
 
-            _textArea.MouseDoubleClick += new MouseEventHandler(SelectAllPatterns);
+            _textArea.MouseDoubleClick += SelectAllPatterns;
         }
 
         private void InitColors()
@@ -329,7 +329,7 @@ namespace KineticValidator
             }
 
             Text += fullFileName;
-            this._fileName = fullFileName;
+            _fileName = fullFileName;
             _textArea.Text = File.ReadAllText(fullFileName);
         }
 
@@ -345,25 +345,19 @@ namespace KineticValidator
             }
 
             Text += fullFileName;
-            this._fileName = fullFileName;
-            _textArea.Text = singleLineBrackets
-                ? JsonIo.BeautifyJson(File.ReadAllText(fullFileName), singleLineBrackets)
+            _fileName = fullFileName;
+            _textArea.Text = SingleLineBrackets
+                ? JsonIo.BeautifyJson(File.ReadAllText(fullFileName), SingleLineBrackets)
                 : File.ReadAllText(fullFileName);
         }
 
         public void SaveTextToFile(string fullFileName, bool makeBackup = true)
         {
-            if (string.IsNullOrEmpty(fullFileName))
-            {
-                return;
-            }
+            if (string.IsNullOrEmpty(fullFileName)) return;
 
             var choice = MessageBox.Show("Are you sure?", "Save file...", MessageBoxButtons.YesNo);
 
-            if (choice == DialogResult.No)
-            {
-                return;
-            }
+            if (choice == DialogResult.No) return;
 
             if (makeBackup)
             {
@@ -372,10 +366,7 @@ namespace KineticValidator
 
                 if (File.Exists(fullFileName))
                 {
-                    if (File.Exists(bakFileName))
-                    {
-                        File.Delete(bakFileName);
-                    }
+                    if (File.Exists(bakFileName)) File.Delete(bakFileName);
                     File.Move(fullFileName, bakFileName);
                 }
             }
@@ -408,15 +399,12 @@ namespace KineticValidator
             openFileDialog.Title = "Open file";
             openFileDialog.DefaultExt = "jsonc";
             openFileDialog.Filter = "Text files|*.txt;*.jsonc;*.json|All files|*.*";
-            if (openFileDialog.ShowDialog() == DialogResult.OK)
-            {
-                LoadTextFromFile(openFileDialog.FileName);
-            }
+            if (openFileDialog.ShowDialog() == DialogResult.OK) LoadTextFromFile(openFileDialog.FileName);
         }
 
         private void SaveFile()
         {
-            SaveTextToFile(_fileName, true);
+            SaveTextToFile(_fileName);
         }
 
         private void CutToolStripMenuItem_Click(object sender, EventArgs e)
@@ -491,7 +479,7 @@ namespace KineticValidator
 
         private void FormatText()
         {
-            _textArea.Text = JsonIo.BeautifyJson(_textArea.Text, singleLineBrackets);
+            _textArea.Text = JsonIo.BeautifyJson(_textArea.Text, SingleLineBrackets);
             _textArea.SelectionStart = _textArea.SelectionEnd = 0;
             _textArea.ScrollCaret();
         }

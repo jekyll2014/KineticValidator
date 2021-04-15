@@ -37,7 +37,10 @@ namespace KineticValidator
         [DataMember] public string Value; // property value
         [DataMember] public JsoncContentType FileType; // file type (event, string, rules, ...)
         [DataMember] public string Version; // schema version declared in the beginning of the file
-        [DataMember] public JsonItemType ItemType; // type of the property as per JSON classification (property, array, object)
+
+        [DataMember]
+        public JsonItemType ItemType; // type of the property as per JSON classification (property, array, object)
+
         [DataMember] public string Parent; // parent name
         [DataMember] public bool Shared; // is original file in shared or project folder
         [DataMember] public int StartPosition; // property beginning byte # in the original file
@@ -53,7 +56,7 @@ namespace KineticValidator
                 return parentPath;
             }
         }
-        
+
         public JsonProperty()
         {
             FullFileName = "";

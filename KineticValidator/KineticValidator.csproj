@@ -102,7 +102,7 @@
   <ItemGroup>
     <Compile Include="AssemblyLoader.cs" />
     <Compile Include="Utilities.cs" />
-    <Compile Include="Validators.cs">
+    <Compile Include="ProjectValidator.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="JsonPathParser.cs" />

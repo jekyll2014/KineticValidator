@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 using NJsonSchema.Validation;
@@ -13,8 +14,9 @@ namespace KineticValidator
         Unknown,
         Deployment,
         Repository,
-        IceRepository,
+        IceRepository
     }
+
     internal class ContentTypeItem
     {
         public string FileTypeMask;
@@ -69,7 +71,9 @@ namespace KineticValidator
 
             exceptionMessage.AppendLine(ex.Message);
             if (ex.InnerException != null)
+            {
                 exceptionMessage.AppendLine(ExceptionPrint(ex.InnerException));
+            }
 
             return exceptionMessage.ToString();
         }
@@ -79,39 +83,31 @@ namespace KineticValidator
             return !fullFileName.Contains(projectPath);
         }
 
-        internal static JsoncContentType GetFileTypeFromFileName(string fullFileName, IEnumerable<ContentTypeItem> _fileTypes)
+        internal static JsoncContentType GetFileTypeFromFileName(string fullFileName,
+            IEnumerable<ContentTypeItem> _fileTypes)
         {
-            var fileType = JsoncContentType.Unknown;
             var shortFileName = GetShortFileName(fullFileName);
-            foreach (var item in _fileTypes)
-                if (shortFileName.EndsWith(item.FileTypeMask))
-                {
-                    fileType = item.FileType;
-                    break;
-                }
 
-            return fileType;
+            return (from item in _fileTypes where shortFileName.EndsWith(item.FileTypeMask) select item.FileType).FirstOrDefault();
         }
 
         internal static string GetShortFileName(string longFileName)
         {
-            if (string.IsNullOrEmpty(longFileName))
-            {
-                return longFileName;
-            }
+            if (string.IsNullOrEmpty(longFileName)) return longFileName;
 
             var i = longFileName.LastIndexOf('\\');
-            if (i < 0)
-            {
-                return longFileName;
-            }
+            if (i < 0) return longFileName;
 
             if (i + 1 >= 0 && longFileName.Length > i + 1)
-                return i < 0 ? longFileName : longFileName.Substring(i + 1);
+            {
+                return longFileName.Substring(i + 1);
+            }
+
             return longFileName;
         }
 
         private static readonly object lockDevLogFile = new object();
+
         internal static void SaveDevLog(string text)
         {
             lock (lockDevLogFile)
@@ -121,7 +117,8 @@ namespace KineticValidator
                     File.AppendAllText("DeveloperLog.txt", text + Environment.NewLine);
                 }
                 catch
-                { }
+                {
+                }
             }
         }
     }
