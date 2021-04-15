@@ -100,6 +100,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AssemblyLoader.cs" />
     <Compile Include="Utilities.cs" />
     <Compile Include="Validators.cs">
       <SubType>Form</SubType>

@@ -118,7 +118,7 @@ namespace KineticValidator
             {
                 try
                 {
-                    File.AppendAllText("DeveloperLog.txt", text);
+                    File.AppendAllText("DeveloperLog.txt", text + Environment.NewLine);
                 }
                 catch
                 { }

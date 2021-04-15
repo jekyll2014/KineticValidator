@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Runtime.Serialization;
-using System.Text;
 
 namespace KineticValidator
 {
@@ -80,18 +79,18 @@ namespace KineticValidator
 
         public string ToText()
         {
-            var text = new StringBuilder();
-            text.AppendLine("{");
-            text.AppendLine("\tProjectName: " + ProjectName);
-            text.AppendLine("\tFullFileName: " + FullFileName);
-            text.AppendLine("\tFileType: " + FileType);
-            text.AppendLine("\tMessage: " + Message);
-            text.AppendLine("\tLineId: " + LineId);
-            text.AppendLine("\tJsonPath: " + JsonPath);
-            text.AppendLine("\tImportance: " + Severity);
-            text.AppendLine("\tValidationType: " + ValidationType);
-            text.AppendLine("\tSource: " + Source);
-            text.Append("}");
+            var text =
+            "{" + Environment.NewLine +
+            "\tProjectName: " + ProjectName + Environment.NewLine +
+            "\tFullFileName: " + FullFileName + Environment.NewLine +
+            "\tFileType: " + FileType + Environment.NewLine +
+            "\tMessage: " + Message + Environment.NewLine +
+            "\tLineId: " + LineId + Environment.NewLine +
+            "\tJsonPath: " + JsonPath + Environment.NewLine +
+            "\tImportance: " + Severity + Environment.NewLine +
+            "\tValidationType: " + ValidationType + Environment.NewLine +
+            "\tSource: " + Source + Environment.NewLine +
+            "}";
             return text.ToString();
         }
 
