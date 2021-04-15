@@ -43,7 +43,7 @@ Validations implemented:
 	40) Incorrect layout id's - any layouts having "model.id" different from control "id"
 	41) Incorrect dataview-condition - "dataview-condition" method must have different values for "dataview" and "result" properties otherwise dataview data could be corrupted.
 	42) Incorrect tab links - to detect inexistent tab id's (broken by AppStudio). Not very reliable - false alarms on slide-outs.
-	43) Incorrect REST calls - to detect inconsistent RES calls. Available services/methods/parameters are taken from Server\Assemblies folder *.Contract*.dll files. Need to have some dependent DLL's in program or Assemblies folder to get parameters list for the methods (service and methods works well without). See 'Tech notes'.
+	43) Incorrect REST calls - to detect inconsistent REST calls. Available services/methods/parameters are taken from Server\Assemblies folder *.Contract*.dll files. Need to have some dependent DLL's in program or Assemblies folder to get parameters list for the methods (service and methods works well without). See 'Tech notes'.
 	44) Duplicate GUID's - to find GUID duplicates within project scope. !!! Experimental feature !!!
 
 	It is possible to select root projects folder to run mass-validation. Note that it tries to find a project in only one sub-folder level.
