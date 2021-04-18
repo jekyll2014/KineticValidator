@@ -1,4 +1,7 @@
-﻿using NJsonSchema;
+﻿// This is an independent project of an individual developer. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++, C#, and Java: http://www.viva64.com
+
+using NJsonSchema;
 using NJsonSchema.Validation;
 
 using System;
@@ -98,7 +101,7 @@ namespace KineticValidator
                 {"JS #_trans.dataView('DataView').count_#", JsDataViewCount},
                 {"Missing layout id's", MissingLayoutIds},
                 {"Incorrect layout id's", IncorrectLayoutIds},
-                {"Incorrect dataview-condition", IncorrectDvContitionViewName},
+                {"Incorrect dataview-condition", IncorrectDvConditionViewName},
                 {"Incorrect tab links", IncorrectTabIds},
                 {"Incorrect REST calls", IncorrectRestCalls},
                 {"Duplicate GUID's", DuplicateGuiDs}
@@ -107,20 +110,22 @@ namespace KineticValidator
         //cached data
         private static Dictionary<string, string> _patchValues;
         private static ConcurrentDictionary<string, List<ParsedProperty>> _parsedFiles;
-        private static bool _noServiceModel;
-        private static bool _allFieldsPatched;
+        private static volatile bool _allFieldsPatched;
 
         //global cache
         private static readonly ConcurrentDictionary<string, string> SchemaList =
             new ConcurrentDictionary<string, string>();
 
-        private static readonly ConcurrentDictionary<string, Dictionary<string, List<string>>> KnownServices =
-            new ConcurrentDictionary<string, Dictionary<string, List<string>>>();
+        private static readonly ConcurrentDictionary<string, Dictionary<string, string[]>> KnownServices =
+            new ConcurrentDictionary<string, Dictionary<string, string[]>>();
+
+        private static readonly ConcurrentDictionary<string, Dictionary<string, Dictionary<string, string[]>>>
+            KnownDataSets = new ConcurrentDictionary<string, Dictionary<string, Dictionary<string, string[]>>>();
 
         internal static void Initialize(ProcessConfiguration processConfiguration,
             ProjectConfiguration projectConfiguration,
             SeedData seedData,
-            bool clearCashe)
+            bool clearCache)
         {
             if (processConfiguration != null)
             {
@@ -158,13 +163,11 @@ namespace KineticValidator
             _patchValues = new Dictionary<string, string>();
             _allFieldsPatched = false;
 
-            if (clearCashe)
-            {
+            if (clearCache)
                 _parsedFiles = new ConcurrentDictionary<string, List<ParsedProperty>>();
-                _noServiceModel = false;
-                //_schemaList = new Dictionary<string, string>();
-                //_knownServices = new Dictionary<string, Dictionary<string, List<string>>>();
-            }
+            //SchemaList = new Dictionary<string, string>();
+            //KnownServices = new Dictionary<string, Dictionary<string, List<string>>>();
+            //KnownDataSets = new ConcurrentDictionary<string, Dictionary<string, Dictionary<string, string[]>>>();
         }
 
         #region Helping methods
@@ -184,7 +187,7 @@ namespace KineticValidator
 
             const char startChar = '{';
             const char endChar = '}';
-            var improperChars = new[] { ' ', ',', ':', ';', '\'', '\"', '(', ')', '+', '=', '[', ']', '&', '|', '~' };
+            var improperChars = new[] {' ', ',', ':', ';', '\'', '\"', '(', ')', '+', '=', '[', ']', '&', '|', '~'};
 
             var tokens = field.Split(improperChars);
             foreach (var token in tokens)
@@ -250,7 +253,7 @@ namespace KineticValidator
             var patchList = new List<string>();
             if (string.IsNullOrEmpty(field)) return patchList;
 
-            var improperChars = new[] { ' ', '.', ',', ':', ';', '\'', '\"', '(', ')', '{', '}', '[', ']', '~' };
+            var improperChars = new[] {' ', '.', ',', ':', ';', '\'', '\"', '(', ')', '{', '}', '[', ']', '~'};
             var tokens = field.Split(improperChars);
             const char tokenEmbracementChar = '%';
             foreach (var token in tokens)
@@ -325,6 +328,7 @@ namespace KineticValidator
         }
 
         private static readonly object LockSchemaGetter = new object();
+
         private static async Task<List<ReportItem>> ValidateFileSchema(string projectName,
             string fullFileName,
             string schemaUrl = "")
@@ -537,17 +541,17 @@ namespace KineticValidator
             if (error is ChildSchemaValidationError subErrorCollection)
             {
                 errorList.AddRange(from subError in subErrorCollection.Errors
-                                   from subErrorItem in subError.Value
-                                   select new ReportItem
-                                   {
-                                       ProjectName = projectName,
-                                       LineId = subErrorItem.LineNumber.ToString(),
-                                       JsonPath = subErrorItem.Path.TrimStart('#', '/'),
-                                       Message = subErrorItem.Kind.ToString(),
-                                       ValidationType = ValidationTypeEnum.Scheme.ToString(),
-                                       Severity = ImportanceEnum.Error.ToString(),
-                                       Source = "GetErrorList"
-                                   });
+                    from subErrorItem in subError.Value
+                    select new ReportItem
+                    {
+                        ProjectName = projectName,
+                        LineId = subErrorItem.LineNumber.ToString(),
+                        JsonPath = subErrorItem.Path.TrimStart('#', '/'),
+                        Message = subErrorItem.Kind.ToString(),
+                        ValidationType = ValidationTypeEnum.Scheme.ToString(),
+                        Severity = ImportanceEnum.Error.ToString(),
+                        Source = "GetErrorList"
+                    });
             }
             else
             {
@@ -579,14 +583,14 @@ namespace KineticValidator
 
             if (error is ChildSchemaValidationError subErrorCollection)
                 foreach (var subError in subErrorCollection.Errors)
-                    foreach (var subErrorItem in subError.Value)
-                        errorText.AppendLine("\t"
-                                             + "- line #"
-                                             + subErrorItem.LineNumber
-                                             + " "
-                                             + subErrorItem.Kind
-                                             + ", path="
-                                             + subErrorItem.Path);
+                foreach (var subErrorItem in subError.Value)
+                    errorText.AppendLine("\t"
+                                         + "- line #"
+                                         + subErrorItem.LineNumber
+                                         + " "
+                                         + subErrorItem.Kind
+                                         + ", path="
+                                         + subErrorItem.Path);
 
             return errorText.ToString();
         }
@@ -610,7 +614,6 @@ namespace KineticValidator
                     schemaData = webClient.DownloadString(schemaUrl);
                     var dirPath = Path.GetDirectoryName(localPath);
                     if (dirPath != null)
-                    {
                         try
                         {
                             if (!Directory.Exists(dirPath)) Directory.CreateDirectory(dirPath);
@@ -622,9 +625,9 @@ namespace KineticValidator
                             Utilities.SaveDevLog(ex.Message);
                             return schemaData;
                         }
-                    }
                 }
             }
+
             return schemaData;
         }
 
@@ -671,16 +674,16 @@ namespace KineticValidator
             return list;
         }
 
-        private struct RestCallInfo
+        private struct RestMethodInfo
         {
             public string SvcName;
             public string MethodName;
-            public List<string> Parameters;
+            public string[] Parameters;
         }
 
-        private static RestCallInfo GetRestCallParams(string svcName, string methodName, string assemblyPath)
+        private static RestMethodInfo GetRestCallParams(string svcName, string methodName, string assemblyPath)
         {
-            var result = new RestCallInfo();
+            var result = new RestMethodInfo();
 
             if (KnownServices.ContainsKey(svcName))
             {
@@ -697,38 +700,91 @@ namespace KineticValidator
                 var domain = AppDomain.CreateDomain(nameof(AssemblyLoader), AppDomain.CurrentDomain.Evidence,
                     new AppDomainSetup
                     {
-                        ApplicationBase = Path.GetDirectoryName(typeof(AssemblyLoader).Assembly.Location),
-                        PrivateBinPath = assemblyPath + "\\..\\Bin"
+                        ApplicationBase = Path.GetDirectoryName(typeof(AssemblyLoader).Assembly.Location)
+                        //PrivateBinPath = assemblyPath + "\\..\\Bin"
                     });
                 try
                 {
                     var loader =
-                        (AssemblyLoader)domain.CreateInstanceAndUnwrap(typeof(AssemblyLoader).Assembly.FullName,
+                        (AssemblyLoader) domain.CreateInstanceAndUnwrap(typeof(AssemblyLoader).Assembly.FullName,
                             typeof(AssemblyLoader).FullName ?? string.Empty);
 
-                    var success = loader.LoadAssembly(svcName, assemblyPath);
-                    if (!success) return result;
+                    var assemblyLoadResult = loader.LoadAssembly(svcName, assemblyPath);
+
+                    if (!assemblyLoadResult) return result;
 
                     result.SvcName = svcName;
-                    var methodsList = loader.GetMethodsSafely(svcName, assemblyPath);
-                    var m = new Dictionary<string, List<string>>();
-                    foreach (var item in methodsList)
+                    KnownServices.TryAdd(svcName, loader.AllMethodsInfo);
+                    if (loader.AllMethodsInfo != null && loader.AllMethodsInfo.ContainsKey(methodName))
                     {
-                        List<string> paramsList = null;
-                        if (!_noServiceModel) paramsList = loader.GetParamsSafely(svcName, item, assemblyPath);
-
-                        if (paramsList == null) _noServiceModel = true;
-
-                        m.Add(item, paramsList);
-
-                        if (item == methodName)
-                        {
-                            result.MethodName = methodName;
-                            result.Parameters = paramsList;
-                        }
+                        result.MethodName = methodName;
+                        loader.AllMethodsInfo.TryGetValue(methodName, out result.Parameters);
                     }
+                }
+                catch (Exception ex)
+                {
+                    Utilities.SaveDevLog(ex.Message);
+                }
+                finally
+                {
+                    AppDomain.Unload(domain);
+                }
+            }
 
-                    KnownServices.TryAdd(svcName, m);
+            return result;
+        }
+
+        private struct RestDataSetInfo
+        {
+            public string SvcName;
+            public string DataSetName;
+            public string TableName;
+            public string[] Fields;
+        }
+
+        private static RestDataSetInfo GetRestServiceDataSets(string svcName, string dataSetName, string tableName,
+            string assemblyPath)
+        {
+            var result = new RestDataSetInfo();
+
+            if (KnownDataSets.ContainsKey(svcName))
+            {
+                result.SvcName = svcName;
+                var dsTmp = KnownDataSets.Where(n => n.Value.ContainsKey(dataSetName));
+
+                KnownDataSets.TryGetValue(svcName, out var dataSets);
+                if (dataSets != null && dataSets.ContainsKey(dataSetName))
+                {
+                    result.DataSetName = dataSetName;
+                    Dictionary<string, string[]> tables = null;
+                    dataSets?.TryGetValue(svcName, out tables);
+                    if (tables != null && tables.ContainsKey(tableName))
+                    {
+                        result.TableName = tableName;
+                        tables.TryGetValue(tableName, out result.Fields);
+                    }
+                }
+            }
+            else
+            {
+                var domain = AppDomain.CreateDomain(nameof(AssemblyLoader), AppDomain.CurrentDomain.Evidence,
+                    new AppDomainSetup
+                    {
+                        ApplicationBase = Path.GetDirectoryName(typeof(AssemblyLoader).Assembly.Location)
+                        //PrivateBinPath = assemblyPath + "\\..\\Bin"
+                    });
+                try
+                {
+                    var loader =
+                        (AssemblyLoader) domain.CreateInstanceAndUnwrap(typeof(AssemblyLoader).Assembly.FullName,
+                            typeof(AssemblyLoader).FullName ?? string.Empty);
+
+                    var assemblyLoadResult = loader.LoadAssembly(svcName, assemblyPath);
+
+                    if (!assemblyLoadResult) return result;
+
+                    result.SvcName = svcName;
+                    KnownDataSets.TryAdd(svcName, loader.AllDataSetsInfo);
                 }
                 catch (Exception ex)
                 {
@@ -784,12 +840,12 @@ namespace KineticValidator
                 {
                     var replaceValues = new Dictionary<string, string>();
                     foreach (var item in toPatch)
-                        foreach (var patch in patchValues.Where(patch => patch.Key == item.Value))
-                        {
-                            replaceValues.Add(item.Key, patch.Value);
-                            allReplaced = false;
-                            break;
-                        }
+                    foreach (var patch in patchValues.Where(patch => patch.Key == item.Value))
+                    {
+                        replaceValues.Add(item.Key, patch.Value);
+                        allReplaced = false;
+                        break;
+                    }
 
                     foreach (var r in replaceValues) patchValues[r.Key] = r.Value;
                 }
@@ -838,28 +894,31 @@ namespace KineticValidator
             fullFilesList.AddRange(Directory.GetFiles(_projectPath, _fileMask, SearchOption.AllDirectories));
 
             return (from file in fullFilesList
-                    where file.IndexOf(_projectPath + "\\views\\", StringComparison.OrdinalIgnoreCase) < 0
-                    where !_processedFilesList.ContainsKey(file) && !Utilities.IsShared(file, _projectPath)
-                    select new ReportItem
-                    {
-                        ProjectName = _projectName,
-                        FullFileName = file,
-                        Message = "File is not used in the project",
-                        ValidationType = ValidationTypeEnum.Logic.ToString(),
-                        Severity = ImportanceEnum.Note.ToString(),
-                        Source = methodName
-                    }).ToList();
+                where file.IndexOf(_projectPath + "\\views\\", StringComparison.OrdinalIgnoreCase) < 0
+                where !_processedFilesList.ContainsKey(file) && !Utilities.IsShared(file, _projectPath)
+                select new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = file,
+                    Message = "File is not used in the project",
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Note.ToString(),
+                    Source = methodName
+                }).ToList();
         }
 
         private static IEnumerable<ReportItem> ValidateFileChars(string methodName)
         {
             var report = new List<ReportItem>();
 
-            foreach (var item in _jsonPropertiesCollection)
-            {
-                if (item == null || item.ItemType != JsonItemType.Property ||
-                    !string.IsNullOrEmpty(item.Value)) continue;
+            var propertyCollection = _jsonPropertiesCollection.Where(n =>
+                !n.Shared
+                && n.ItemType == JsonItemType.Property
+                && !string.IsNullOrEmpty(n.Name)
+                && !string.IsNullOrEmpty(n.Value));
 
+            foreach (var item in propertyCollection)
+            {
                 var charNum = 1;
                 var chars = new List<int>();
                 foreach (var ch in item.Name)
@@ -1004,22 +1063,22 @@ namespace KineticValidator
                     && !string.IsNullOrEmpty(n.Value));
 
             return from patchResource in patchList
-                   where !string.IsNullOrEmpty(patchResource.Value)
-                   where !_jsonPropertiesCollection.Any(n =>
-                       n.ItemType == JsonItemType.Property && n.FileType != JsoncContentType.Patch &&
-                       n.Value.Contains("%" + patchResource.Value + "%"))
-                   select new ReportItem
-                   {
-                       ProjectName = _projectName,
-                       FullFileName = patchResource.FullFileName,
-                       FileType = patchResource.FileType.ToString(),
-                       LineId = patchResource.LineId.ToString(),
-                       JsonPath = patchResource.JsonPath,
-                       Message = $"Patch \"{patchResource.Value}\" is not used in the project",
-                       ValidationType = ValidationTypeEnum.Logic.ToString(),
-                       Severity = ImportanceEnum.Warning.ToString(),
-                       Source = methodName
-                   };
+                where !string.IsNullOrEmpty(patchResource.Value)
+                where !_jsonPropertiesCollection.Any(n =>
+                    n.ItemType == JsonItemType.Property && n.FileType != JsoncContentType.Patch &&
+                    n.Value.Contains("%" + patchResource.Value + "%"))
+                select new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = patchResource.FullFileName,
+                    FileType = patchResource.FileType.ToString(),
+                    LineId = patchResource.LineId.ToString(),
+                    JsonPath = patchResource.JsonPath,
+                    Message = $"Patch \"{patchResource.Value}\" is not used in the project",
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Warning.ToString(),
+                    Source = methodName
+                };
         }
 
         private static IEnumerable<ReportItem> CallNonExistingPatches(string methodName)
@@ -1033,23 +1092,23 @@ namespace KineticValidator
                     && !string.IsNullOrEmpty(n.Value));
 
             return from property in _jsonPropertiesCollection
-                   where property.ItemType == JsonItemType.Property
-                   let usedPatchList = GetPatchList(property.Value)
-                   from patchItem in usedPatchList
-                   where !string.IsNullOrEmpty(patchItem)
-                   where !_systemMacros.Contains(patchItem) && patchList.All(n => n.Value != patchItem.Trim('%'))
-                   select new ReportItem
-                   {
-                       ProjectName = _projectName,
-                       FullFileName = property.FullFileName,
-                       FileType = property.FileType.ToString(),
-                       LineId = property.LineId.ToString(),
-                       JsonPath = property.JsonPath,
-                       Message = $"Patch \"{patchItem}\" is not defined in the project",
-                       ValidationType = ValidationTypeEnum.Logic.ToString(),
-                       Severity = ImportanceEnum.Error.ToString(),
-                       Source = methodName
-                   };
+                where property.ItemType == JsonItemType.Property
+                let usedPatchList = GetPatchList(property.Value)
+                from patchItem in usedPatchList
+                where !string.IsNullOrEmpty(patchItem)
+                where !_systemMacros.Contains(patchItem) && patchList.All(n => n.Value != patchItem.Trim('%'))
+                select new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = property.FullFileName,
+                    FileType = property.FileType.ToString(),
+                    LineId = property.LineId.ToString(),
+                    JsonPath = property.JsonPath,
+                    Message = $"Patch \"{patchItem}\" is not defined in the project",
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Error.ToString(),
+                    Source = methodName
+                };
         }
 
         private static IEnumerable<ReportItem> OverridingPatches(string methodName)
@@ -1251,8 +1310,8 @@ namespace KineticValidator
 
             if (valuesList.Any())
                 foreach (var item in valuesList)
-                    foreach (var patch in _patchValues)
-                        item.Value = item.Value.Replace(patch.Key, patch.Value);
+                foreach (var patch in _patchValues)
+                    item.Value = item.Value.Replace(patch.Key, patch.Value);
 
             _allFieldsPatched = true;
 
@@ -1325,20 +1384,20 @@ namespace KineticValidator
                     && !string.IsNullOrEmpty(n.Name));
 
             return from stringResource in stringsList
-                   where !string.IsNullOrEmpty(stringResource.Name) && !_jsonPropertiesCollection.Any(n =>
-                       n.ItemType == JsonItemType.Property && n.Value.Contains("strings." + stringResource.Name))
-                   select new ReportItem
-                   {
-                       ProjectName = _projectName,
-                       FullFileName = stringResource.FullFileName,
-                       FileType = stringResource.FileType.ToString(),
-                       LineId = stringResource.LineId.ToString(),
-                       JsonPath = stringResource.JsonPath,
-                       Message = $"String \"{stringResource.Name}\" is not used in the project",
-                       ValidationType = ValidationTypeEnum.Logic.ToString(),
-                       Severity = ImportanceEnum.Warning.ToString(),
-                       Source = methodName
-                   };
+                where !string.IsNullOrEmpty(stringResource.Name) && !_jsonPropertiesCollection.Any(n =>
+                    n.ItemType == JsonItemType.Property && n.Value.Contains("strings." + stringResource.Name))
+                select new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = stringResource.FullFileName,
+                    FileType = stringResource.FileType.ToString(),
+                    LineId = stringResource.LineId.ToString(),
+                    JsonPath = stringResource.JsonPath,
+                    Message = $"String \"{stringResource.Name}\" is not used in the project",
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Warning.ToString(),
+                    Source = methodName
+                };
         }
 
         private static IEnumerable<ReportItem> CallNonExistingStrings(string methodName)
@@ -1360,22 +1419,22 @@ namespace KineticValidator
                     && n.Value.Contains("{{strings."));
 
             return from field in fieldsList
-                   let strList = GetTableField(field.Value)
-                   from str in strList
-                   where !string.IsNullOrEmpty(str) && str.StartsWith("strings.") &&
-                         stringsList.All(n => n.Name != str.Replace("strings.", ""))
-                   select new ReportItem
-                   {
-                       ProjectName = _projectName,
-                       FullFileName = field.FullFileName,
-                       FileType = field.FileType.ToString(),
-                       LineId = field.LineId.ToString(),
-                       JsonPath = field.JsonPath,
-                       Message = $"String \"{str}\" is not defined in the project",
-                       ValidationType = ValidationTypeEnum.Logic.ToString(),
-                       Severity = ImportanceEnum.Error.ToString(),
-                       Source = methodName
-                   };
+                let strList = GetTableField(field.Value)
+                from str in strList
+                where !string.IsNullOrEmpty(str) && str.StartsWith("strings.") &&
+                      stringsList.All(n => n.Name != str.Replace("strings.", ""))
+                select new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = field.FullFileName,
+                    FileType = field.FileType.ToString(),
+                    LineId = field.LineId.ToString(),
+                    JsonPath = field.JsonPath,
+                    Message = $"String \"{str}\" is not defined in the project",
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Error.ToString(),
+                    Source = methodName
+                };
         }
 
         private static IEnumerable<ReportItem> OverridingStrings(string methodName)
@@ -1469,23 +1528,23 @@ namespace KineticValidator
                     && !string.IsNullOrEmpty(n.Value));
 
             return from id in emptyEventsList
-                   let objectMembers = _jsonPropertiesCollection.Where(n =>
-                       n.ItemType == JsonItemType.Property && n.FullFileName == id.FullFileName &&
-                       n.ParentPath.Contains(id.ParentPath + ".actions[") && n.Name == "type")
-                   let actionFound = objectMembers.Any()
-                   where !actionFound
-                   select new ReportItem
-                   {
-                       ProjectName = _projectName,
-                       FullFileName = id.FullFileName,
-                       Message = $"Event \"{id.Value}\" has no actions",
-                       FileType = id.FileType.ToString(),
-                       LineId = id.LineId.ToString(),
-                       JsonPath = id.JsonPath,
-                       ValidationType = ValidationTypeEnum.Logic.ToString(),
-                       Severity = ImportanceEnum.Note.ToString(),
-                       Source = methodName
-                   };
+                let objectMembers = _jsonPropertiesCollection.Where(n =>
+                    n.ItemType == JsonItemType.Property && n.FullFileName == id.FullFileName &&
+                    n.ParentPath.Contains(id.ParentPath + ".actions[") && n.Name == "type")
+                let actionFound = objectMembers.Any()
+                where !actionFound
+                select new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = id.FullFileName,
+                    Message = $"Event \"{id.Value}\" has no actions",
+                    FileType = id.FileType.ToString(),
+                    LineId = id.LineId.ToString(),
+                    JsonPath = id.JsonPath,
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Note.ToString(),
+                    Source = methodName
+                };
         }
 
         private static IEnumerable<ReportItem> OverridingEvents(string methodName)
@@ -1590,24 +1649,24 @@ namespace KineticValidator
                     && !string.IsNullOrEmpty(n.Value));
 
             return from id in idProjectList
-                   where !_jsonPropertiesCollection.Any(n =>
-                       n.ItemType == JsonItemType.Property && n.FullFileName == id.FullFileName &&
-                       n.ParentPath == id.ParentPath && n.Name == "trigger")
-                   where !_jsonPropertiesCollection.Any(n =>
-                       n.ItemType == JsonItemType.Property && n.FileType == JsoncContentType.Events && n.Name != "id" &&
-                       n.Value == id.Value)
-                   select new ReportItem
-                   {
-                       ProjectName = _projectName,
-                       FullFileName = id.FullFileName,
-                       FileType = id.FileType.ToString(),
-                       LineId = id.LineId.ToString(),
-                       JsonPath = id.JsonPath,
-                       Message = $"Event id \"{id.Value}\" is not used in the project",
-                       ValidationType = ValidationTypeEnum.Logic.ToString(),
-                       Severity = ImportanceEnum.Warning.ToString(),
-                       Source = methodName
-                   };
+                where !_jsonPropertiesCollection.Any(n =>
+                    n.ItemType == JsonItemType.Property && n.FullFileName == id.FullFileName &&
+                    n.ParentPath == id.ParentPath && n.Name == "trigger")
+                where !_jsonPropertiesCollection.Any(n =>
+                    n.ItemType == JsonItemType.Property && n.FileType == JsoncContentType.Events && n.Name != "id" &&
+                    n.Value == id.Value)
+                select new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = id.FullFileName,
+                    FileType = id.FileType.ToString(),
+                    LineId = id.LineId.ToString(),
+                    JsonPath = id.JsonPath,
+                    Message = $"Event id \"{id.Value}\" is not used in the project",
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Warning.ToString(),
+                    Source = methodName
+                };
         }
 
         private static IEnumerable<ReportItem> CallNonExistingEvents(string methodName)
@@ -1694,21 +1753,21 @@ namespace KineticValidator
                     && !string.IsNullOrEmpty(n.Value));
 
             return from viewResource in dataViewList
-                   where !_jsonPropertiesCollection.Any(n =>
-                       n.ItemType == JsonItemType.Property && n.FileType != JsoncContentType.DataViews &&
-                       n.Value.Contains(viewResource.Value))
-                   select new ReportItem
-                   {
-                       ProjectName = _projectName,
-                       FullFileName = viewResource.FullFileName,
-                       FileType = viewResource.FileType.ToString(),
-                       LineId = viewResource.LineId.ToString(),
-                       JsonPath = viewResource.JsonPath,
-                       Message = $"DataView \"{viewResource.Value}\" is not used in the project",
-                       ValidationType = ValidationTypeEnum.Logic.ToString(),
-                       Severity = ImportanceEnum.Warning.ToString(),
-                       Source = methodName
-                   };
+                where !_jsonPropertiesCollection.Any(n =>
+                    n.ItemType == JsonItemType.Property && n.FileType != JsoncContentType.DataViews &&
+                    n.Value.Contains(viewResource.Value))
+                select new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = viewResource.FullFileName,
+                    FileType = viewResource.FileType.ToString(),
+                    LineId = viewResource.LineId.ToString(),
+                    JsonPath = viewResource.JsonPath,
+                    Message = $"DataView \"{viewResource.Value}\" is not used in the project",
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Warning.ToString(),
+                    Source = methodName
+                };
         }
 
         private static IEnumerable<ReportItem> CallNonExistingDataViews(string methodName)
@@ -1773,23 +1832,23 @@ namespace KineticValidator
                 }
 
                 report.AddRange(from dataViewItem in usedDataViewsList
-                                where !string.IsNullOrEmpty(dataViewItem)
-                                select dataViewItem.Substring(0, dataViewItem.IndexOf('.'))
+                    where !string.IsNullOrEmpty(dataViewItem)
+                    select dataViewItem.Substring(0, dataViewItem.IndexOf('.'))
                     into viewName
-                                where !_systemDataViews.Contains(viewName) && !viewName.StartsWith("%") &&
-                                      dataViewList.All(n => n.Value != viewName)
-                                select new ReportItem
-                                {
-                                    ProjectName = _projectName,
-                                    FullFileName = property.FullFileName,
-                                    FileType = property.FileType.ToString(),
-                                    LineId = property.LineId.ToString(),
-                                    JsonPath = property.JsonPath,
-                                    Message = $"DataView \"{viewName}\" is not defined in the project",
-                                    ValidationType = ValidationTypeEnum.Logic.ToString(),
-                                    Severity = ImportanceEnum.Error.ToString(),
-                                    Source = methodName
-                                });
+                    where !_systemDataViews.Contains(viewName) && !viewName.StartsWith("%") &&
+                          dataViewList.All(n => n.Value != viewName)
+                    select new ReportItem
+                    {
+                        ProjectName = _projectName,
+                        FullFileName = property.FullFileName,
+                        FileType = property.FileType.ToString(),
+                        LineId = property.LineId.ToString(),
+                        JsonPath = property.JsonPath,
+                        Message = $"DataView \"{viewName}\" is not defined in the project",
+                        ValidationType = ValidationTypeEnum.Logic.ToString(),
+                        Severity = ImportanceEnum.Error.ToString(),
+                        Source = methodName
+                    });
             }
 
             return report;
@@ -2325,23 +2384,23 @@ namespace KineticValidator
                     && n.Name == "id");
 
             return from idItem in layoutIdList
-                   let modelId = _jsonPropertiesCollection.Where(n =>
-                       n.FullFileName == idItem.FullFileName && n.ItemType == JsonItemType.Property &&
-                       n.FileType == JsoncContentType.Layout && n.ParentPath == idItem.ParentPath + ".model" &&
-                       n.Name == "id").ToArray()
-                   where !modelId.Any()
-                   select new ReportItem
-                   {
-                       ProjectName = _projectName,
-                       FullFileName = idItem.FullFileName,
-                       Message = $"Layout control id=\"{idItem.Value}\" has no model id",
-                       FileType = idItem.FileType.ToString(),
-                       LineId = idItem.LineId.ToString(),
-                       JsonPath = idItem.JsonPath,
-                       ValidationType = ValidationTypeEnum.Logic.ToString(),
-                       Severity = ImportanceEnum.Error.ToString(),
-                       Source = methodName
-                   };
+                let modelId = _jsonPropertiesCollection.Where(n =>
+                    n.FullFileName == idItem.FullFileName && n.ItemType == JsonItemType.Property &&
+                    n.FileType == JsoncContentType.Layout && n.ParentPath == idItem.ParentPath + ".model" &&
+                    n.Name == "id").ToArray()
+                where !modelId.Any()
+                select new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = idItem.FullFileName,
+                    Message = $"Layout control id=\"{idItem.Value}\" has no model id",
+                    FileType = idItem.FileType.ToString(),
+                    LineId = idItem.LineId.ToString(),
+                    JsonPath = idItem.JsonPath,
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Error.ToString(),
+                    Source = methodName
+                };
         }
 
         private static IEnumerable<ReportItem> IncorrectLayoutIds(string methodName)
@@ -2356,28 +2415,28 @@ namespace KineticValidator
                     && n.Name == "id");
 
             return from idItem in layoutIdList
-                   let modelId = _jsonPropertiesCollection.Where(n =>
-                       n.FullFileName == idItem.FullFileName && n.ItemType == JsonItemType.Property &&
-                       n.FileType == JsoncContentType.Layout && n.ParentPath == idItem.ParentPath + ".model" &&
-                       n.Name == "id").ToArray()
-                   where modelId.Any()
-                   where idItem.Value != modelId.First().Value
-                   select new ReportItem
-                   {
-                       ProjectName = _projectName,
-                       FullFileName = idItem.FullFileName + _splitChar + modelId.First().FullFileName,
-                       Message =
-                           $"Layout control id=\"{idItem.Value}\" doesn't match model id=\"{modelId.First().Value}\"",
-                       FileType = idItem.FileType.ToString() + _splitChar + modelId.First().FileType,
-                       LineId = idItem.LineId.ToString() + _splitChar + modelId.First().LineId,
-                       JsonPath = idItem.JsonPath + _splitChar + modelId.First().JsonPath,
-                       ValidationType = ValidationTypeEnum.Logic.ToString(),
-                       Severity = ImportanceEnum.Error.ToString(),
-                       Source = methodName
-                   };
+                let modelId = _jsonPropertiesCollection.Where(n =>
+                    n.FullFileName == idItem.FullFileName && n.ItemType == JsonItemType.Property &&
+                    n.FileType == JsoncContentType.Layout && n.ParentPath == idItem.ParentPath + ".model" &&
+                    n.Name == "id").ToArray()
+                where modelId.Any()
+                where idItem.Value != modelId.First().Value
+                select new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = idItem.FullFileName + _splitChar + modelId.First().FullFileName,
+                    Message =
+                        $"Layout control id=\"{idItem.Value}\" doesn't match model id=\"{modelId.First().Value}\"",
+                    FileType = idItem.FileType.ToString() + _splitChar + modelId.First().FileType,
+                    LineId = idItem.LineId.ToString() + _splitChar + modelId.First().LineId,
+                    JsonPath = idItem.JsonPath + _splitChar + modelId.First().JsonPath,
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Error.ToString(),
+                    Source = methodName
+                };
         }
 
-        private static IEnumerable<ReportItem> IncorrectDvContitionViewName(string methodName)
+        private static IEnumerable<ReportItem> IncorrectDvConditionViewName(string methodName)
         {
             while (_patchAllFields && !_allFieldsPatched) Thread.Sleep(1);
 
@@ -2468,23 +2527,23 @@ namespace KineticValidator
                     && n.Value == "metafx-tabstrip");
 
             return from tab in tabStripsList
-                   from item in _jsonPropertiesCollection.Where(n =>
-                       !n.Shared && n.FullFileName == tab.FullFileName && n.ItemType == JsonItemType.Property &&
-                       n.FileType == JsoncContentType.Layout && n.JsonPath.Contains(tab.ParentPath + ".model.data") &&
-                       n.Name == "page" && !string.IsNullOrEmpty(n.Value))
-                   where !tabIdsList.Contains(item.Value)
-                   select new ReportItem
-                   {
-                       ProjectName = _projectName,
-                       FullFileName = item.FullFileName,
-                       Message = $"Inexistent tab link: {item.Value}",
-                       FileType = item.FileType.ToString(),
-                       LineId = item.LineId.ToString(),
-                       JsonPath = item.JsonPath,
-                       ValidationType = ValidationTypeEnum.Logic.ToString(),
-                       Severity = ImportanceEnum.Error.ToString(),
-                       Source = methodName
-                   };
+                from item in _jsonPropertiesCollection.Where(n =>
+                    !n.Shared && n.FullFileName == tab.FullFileName && n.ItemType == JsonItemType.Property &&
+                    n.FileType == JsoncContentType.Layout && n.JsonPath.Contains(tab.ParentPath + ".model.data") &&
+                    n.Name == "page" && !string.IsNullOrEmpty(n.Value))
+                where !tabIdsList.Contains(item.Value)
+                select new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = item.FullFileName,
+                    Message = $"Inexistent tab link: {item.Value}",
+                    FileType = item.FileType.ToString(),
+                    LineId = item.LineId.ToString(),
+                    JsonPath = item.JsonPath,
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Error.ToString(),
+                    Source = methodName
+                };
         }
 
         private static IEnumerable<ReportItem> IncorrectRestCalls(string methodName)
@@ -2575,7 +2634,7 @@ namespace KineticValidator
                 if (IsPatch(svcMethodName.Value) || IsTableField(svcMethodName.Value) ||
                     HasJsCode(svcMethodName.Value)) continue;
 
-                if (string.IsNullOrEmpty(svcMethodName?.Value))
+                if (string.IsNullOrEmpty(svcMethodName.Value))
                 {
                     var reportItem = new ReportItem
                     {
@@ -2663,7 +2722,7 @@ namespace KineticValidator
                 }
 
                 missingParams = new StringBuilder();
-                if (!(serverParams.Parameters?.Count > 0)) continue;
+                if (!serverParams.Parameters.Any()) continue;
 
                 var methodParamsTmp = methodParamsList.Select(t => t.Value).ToArray();
                 foreach (var par in serverParams.Parameters.Where(t => t != "ds"))

@@ -1,4 +1,7 @@
-﻿using System;
+﻿// This is an independent project of an individual developer. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++, C#, and Java: http://www.viva64.com
+
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -1261,9 +1264,7 @@ namespace KineticValidator
                                     JsonPath = jsonPath,
                                     Message = $"File type inconsistent: {fileType}->{newFileType}",
                                     ValidationType = ValidationTypeEnum.Logic.ToString(),
-                                    Severity = newFileType == JsoncContentType.Patch
-                                        ? ImportanceEnum.Note.ToString()
-                                        : ImportanceEnum.Warning.ToString(),
+                                    Severity = ImportanceEnum.Warning.ToString(),
                                     Source = "ParseJsonObject"
                                 };
                                 parseJsonObjectReportsCollection.Add(report);
