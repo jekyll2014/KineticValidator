@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.Serialization.Formatters.Binary;
-using System.Runtime.Serialization.Json;
 using System.Text;
 
 using Newtonsoft.Json;
@@ -17,41 +16,12 @@ namespace KineticValidator
     {
         public static bool SaveJson<T>(T data, string fileName, bool formatted = false)
         {
-            if (string.IsNullOrEmpty(fileName)) return false;
+            if (string.IsNullOrEmpty(fileName))
+                return false;
 
             try
             {
-                var jsonSerializer = new DataContractJsonSerializer(typeof(T));
-                if (formatted)
-                {
-                    using (var unformattedJson = new MemoryStream())
-                    {
-                        jsonSerializer.WriteObject(unformattedJson, data);
-                        var json = Encoding.UTF8.GetString(unformattedJson.GetBuffer());
-                        using (var stringReader = new StringReader(json))
-                        {
-                            using (var stringWriter = new StringWriter())
-                            {
-                                using (var jsonReader = new JsonTextReader(stringReader))
-                                {
-                                    using (var jsonWriter = new JsonTextWriter(stringWriter)
-                                        {Formatting = Formatting.Indented})
-                                    {
-                                        jsonWriter.WriteToken(jsonReader);
-                                        File.WriteAllText(fileName, stringWriter.ToString());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    var fileStream = File.Open(fileName, FileMode.Create);
-                    jsonSerializer.WriteObject(fileStream, data);
-                    fileStream.Close();
-                    fileStream.Dispose();
-                }
+                File.WriteAllText(fileName, JsonConvert.SerializeObject(data, formatted ? Formatting.Indented : Formatting.None));
             }
             catch
             {
@@ -61,22 +31,23 @@ namespace KineticValidator
             return true;
         }
 
-        public static List<T> LoadJson<T>(string fileName)
+        public static T LoadJson<T>(string fileName)
         {
-            var newValues = new List<T>();
+            T newValues = default;
 
-            if (string.IsNullOrEmpty(fileName)) return newValues;
+            if (string.IsNullOrEmpty(fileName))
+                return newValues;
 
             try
             {
-                if (!File.Exists(fileName)) return newValues;
+                if (!File.Exists(fileName))
+                    return newValues;
 
-                var jsonSerializer = new DataContractJsonSerializer(typeof(List<T>));
-                var fileStream = File.Open(fileName, FileMode.Open);
-
-                newValues = (List<T>) jsonSerializer.ReadObject(fileStream);
-                fileStream.Close();
-                fileStream.Dispose();
+                using (StreamReader jsonFile = File.OpenText(fileName))
+                {
+                    JsonSerializer serializer = new JsonSerializer();
+                    newValues = (T)serializer.Deserialize(jsonFile, typeof(T));
+                }
             }
             catch
             {
@@ -87,7 +58,8 @@ namespace KineticValidator
 
         public static void SaveBinary<T>(T tree, string fileName)
         {
-            if (string.IsNullOrEmpty(fileName)) return;
+            if (string.IsNullOrEmpty(fileName))
+                return;
 
             using (Stream file = File.Open(fileName, FileMode.Create))
             {
@@ -99,14 +71,15 @@ namespace KineticValidator
         public static T LoadBinary<T>(string fileName)
         {
             T nodeList = default;
-            if (string.IsNullOrEmpty(fileName)) return nodeList;
+            if (string.IsNullOrEmpty(fileName))
+                return nodeList;
 
             using (Stream file = File.Open(fileName, FileMode.Open))
             {
                 try
                 {
                     var bf = new BinaryFormatter();
-                    nodeList = (T) bf.Deserialize(file);
+                    nodeList = (T)bf.Deserialize(file);
                 }
                 catch (Exception ex)
                 {
@@ -121,9 +94,10 @@ namespace KineticValidator
         public static string[] ConvertTextToStringList(string data)
         {
             var stringCollection = new List<string>();
-            if (string.IsNullOrEmpty(data)) return stringCollection.ToArray();
+            if (string.IsNullOrEmpty(data))
+                return stringCollection.ToArray();
 
-            var lineDivider = new List<char> {'\x0d', '\x0a'};
+            var lineDivider = new List<char> { '\x0d', '\x0a' };
             var unparsedData = "";
             foreach (var t in data)
             {
@@ -141,17 +115,20 @@ namespace KineticValidator
                 }
             }
 
-            if (unparsedData.Length > 0) stringCollection.Add(unparsedData);
+            if (unparsedData.Length > 0)
+                stringCollection.Add(unparsedData);
 
             return stringCollection.ToArray();
         }
 
         public static string TrimJson(string original, bool trimEol)
         {
-            if (string.IsNullOrEmpty(original)) return original;
+            if (string.IsNullOrEmpty(original))
+                return original;
 
             original = original.Trim();
-            if (string.IsNullOrEmpty(original)) return original;
+            if (string.IsNullOrEmpty(original))
+                return original;
 
             if (trimEol)
             {
@@ -166,7 +143,8 @@ namespace KineticValidator
                 i = original.IndexOf("\n ", i, StringComparison.Ordinal);
             }
 
-            if (trimEol) return original;
+            if (trimEol)
+                return original;
 
             i = original.IndexOf("\r ", StringComparison.Ordinal);
             while (i >= 0)
@@ -180,7 +158,8 @@ namespace KineticValidator
 
         public static string CompactJson(string json)
         {
-            if (string.IsNullOrEmpty(json)) return json;
+            if (string.IsNullOrEmpty(json))
+                return json;
 
             json = json.Trim();
 
@@ -189,7 +168,8 @@ namespace KineticValidator
 
         public static string BeautifyJson(string json, bool singleLineBrackets)
         {
-            if (string.IsNullOrEmpty(json)) return json;
+            if (string.IsNullOrEmpty(json))
+                return json;
 
             json = json.Trim();
             json = ReformatJson(json, Formatting.Indented);
@@ -210,7 +190,7 @@ namespace KineticValidator
                         {
                             using (var jsonReader = new JsonTextReader(stringReader))
                             {
-                                using (var jsonWriter = new JsonTextWriter(stringWriter) {Formatting = formatting})
+                                using (var jsonWriter = new JsonTextWriter(stringWriter) { Formatting = formatting })
                                 {
                                     jsonWriter.WriteToken(jsonReader);
                                     return stringWriter.ToString();
@@ -230,9 +210,10 @@ namespace KineticValidator
         // possibly need rework
         public static string JsonShiftBrackets(string original)
         {
-            if (string.IsNullOrEmpty(original)) return original;
+            if (string.IsNullOrEmpty(original))
+                return original;
 
-            var searchTokens = new[] {": {", ": ["};
+            var searchTokens = new[] { ": {", ": [" };
             foreach (var token in searchTokens)
             {
                 var i = original.IndexOf(token, StringComparison.Ordinal);
@@ -252,13 +233,16 @@ namespace KineticValidator
                         if (j >= 0)
                             while (original[j] != '\n' && original[j] != '\r' && j >= 0)
                             {
-                                if (original[j] == ' ') trail++;
-                                else trail = 0;
+                                if (original[j] == ' ')
+                                    trail++;
+                                else
+                                    trail = 0;
 
                                 j--;
                             }
 
-                        if (j < 0) j = 0;
+                        if (j < 0)
+                            j = 0;
 
                         if (!(original[j] == '/' && original[j + 1] == '/')) // if it's a comment
                             original = original.Insert(i + 2, Environment.NewLine + new string(' ', trail));
@@ -276,9 +260,10 @@ namespace KineticValidator
         // definitely need rework
         public static string JsonShiftBrackets_v2(string original)
         {
-            if (string.IsNullOrEmpty(original)) return original;
+            if (string.IsNullOrEmpty(original))
+                return original;
 
-            var searchTokens = new[] {": {", ": [", ":{", ":["};
+            var searchTokens = new[] { ": {", ": [", ":{", ":[" };
             try
             {
                 foreach (var token in searchTokens)
@@ -302,14 +287,17 @@ namespace KineticValidator
                             {
                                 while (original[j] != '\n' && original[j] != '\r' && j >= 0)
                                 {
-                                    if (original[j] == ' ') trail++;
-                                    else trail = 0;
+                                    if (original[j] == ' ')
+                                        trail++;
+                                    else
+                                        trail = 0;
 
                                     j--;
                                 }
                             }
 
-                            if (j < 0) j = 0;
+                            if (j < 0)
+                                j = 0;
 
                             if (!(original[j] == '/' && original[j + 1] == '/')) // if it's a comment
                             {
@@ -332,8 +320,8 @@ namespace KineticValidator
 
             const char prefixItem = ' ';
             const int prefixStep = 2;
-            var openBrackets = new[] {'{', '['};
-            var closeBrackets = new[] {'}', ']'};
+            var openBrackets = new[] { '{', '[' };
+            var closeBrackets = new[] { '}', ']' };
 
             var prefixLength = 0;
             var prefix = "";
@@ -347,7 +335,8 @@ namespace KineticValidator
                     if (closeBrackets.Contains(stringList[i][0]))
                     {
                         prefixLength -= prefixStep;
-                        if (prefixLength >= 0) prefix = new string(prefixItem, prefixLength);
+                        if (prefixLength >= 0)
+                            prefix = new string(prefixItem, prefixLength);
                     }
 
                     result.AppendLine(prefix + stringList[i]);
@@ -358,7 +347,8 @@ namespace KineticValidator
                         if (stringList[i].Length > 1 && closeBrackets.Contains(stringList[i][stringList[i].Length - 1]))
                             prefixLength -= prefixStep;
 
-                        if (prefixLength >= 0) prefix = new string(prefixItem, prefixLength);
+                        if (prefixLength >= 0)
+                            prefix = new string(prefixItem, prefixLength);
                     }
                 }
             }

@@ -83,5 +83,8 @@
     <Setting Name="ServerAssembliesPath" Type="System.String" Scope="User">
       <Value Profile="(Default)">C:\_projects\ERP\Current\Deployment\Server\Assemblies</Value>
     </Setting>
+    <Setting Name="UseVsCode" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">False</Value>
+    </Setting>
   </Settings>
 </SettingsFile>

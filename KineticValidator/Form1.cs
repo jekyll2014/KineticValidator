@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -129,6 +130,7 @@ namespace KineticValidator
         private bool _saveReport;
         private bool _isCollectionFolder;
         private bool _showPreview;
+        private bool _useVsCode;
         private FolderType _folderType;
 
         private struct WinPosition
@@ -218,6 +220,7 @@ namespace KineticValidator
             checkBox_alwaysOnTop.Checked = TopMost = _alwaysOnTop = Settings.Default.AlwaysOnTop;
             checkBox_reformatJson.Checked = _reformatJson = Settings.Default.ReformatJson;
             checkBox_showPreview.Checked = _showPreview = Settings.Default.ShowPreview;
+            checkBox_vsCode.Checked = _useVsCode = Settings.Default.UseVsCode;
 
             foreach (var validator in _validatorsListNoPatch)
             {
@@ -239,7 +242,7 @@ namespace KineticValidator
             if (!(winX == 0 && winY == 0 && winW == 0 && winH == 0))
             {
                 Location = new Point
-                    {X = winX, Y = winY};
+                { X = winX, Y = winY };
                 Width = winW;
                 Height = winH;
             }
@@ -259,6 +262,7 @@ namespace KineticValidator
             Settings.Default.SkipSchemaErrors = _skipSchemaErrors;
             Settings.Default.ReformatJson = _reformatJson;
             Settings.Default.ShowPreview = _showPreview;
+            Settings.Default.UseVsCode = _useVsCode;
             Settings.Default.SaveTmpFiles = _saveTmpFiles;
             Settings.Default.SaveReport = _saveReport;
             Settings.Default.MainWindowPositionX = Location.X;
@@ -339,14 +343,16 @@ namespace KineticValidator
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
             SetStatus("");
 
-            if (!_runFromCmdLine) tabControl1.SelectTab(1);
+            if (!_runFromCmdLine)
+                tabControl1.SelectTab(1);
 
             ActivateUiControls(true);
         }
 
         private async void Button_validateAll_Click(object sender, EventArgs e)
         {
-            if (string.IsNullOrEmpty(_projectPath)) return;
+            if (string.IsNullOrEmpty(_projectPath))
+                return;
 
             ActivateUiControls(false);
             InitReportsGrid(true);
@@ -376,7 +382,8 @@ namespace KineticValidator
 
             // do not process 'Shared' on deployment folder processing
             var sharedDir = dirList.Where(n => n.EndsWith("\\Shared")).ToArray();
-            if (sharedDir.Any()) dirList.Remove(sharedDir.First());
+            if (sharedDir.Any())
+                dirList.Remove(sharedDir.First());
 
             foreach (var dir in dirList)
             {
@@ -436,11 +443,12 @@ namespace KineticValidator
 
         private void DataGridView_report_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
         {
-            if (!(sender is DataGridView dataGrid) || e.RowIndex < 0 || e.ColumnIndex < 0) return;
+            if (!(sender is DataGridView dataGrid) || e.RowIndex < 0 || e.ColumnIndex < 0)
+                return;
 
-            var row = _reportTable.Rows[e.RowIndex];
-            var files = new List<string> {"", ""};
-            var fileNames = row[ReportColumns.FullFileName.ToString()]
+            var row = dataGridView_report.Rows[e.RowIndex];
+            var files = new List<string> { "", "" };
+            var fileNames = row.Cells[ReportColumns.FullFileName.ToString()].Value
                 .ToString()
                 .Replace(Environment.NewLine, SplitChar.ToString())
                 .Split(SplitChar);
@@ -451,8 +459,8 @@ namespace KineticValidator
                 n++;
             }
 
-            var paths = new List<string> {"", ""};
-            var pathIds = row[ReportColumns.JsonPath.ToString()]
+            var paths = new List<string> { "", "" };
+            var pathIds = row.Cells[ReportColumns.JsonPath.ToString()].Value
                 .ToString()
                 .Replace(Environment.NewLine, SplitChar.ToString())
                 .Split(SplitChar);
@@ -463,8 +471,8 @@ namespace KineticValidator
                 n++;
             }
 
-            var fileTypes = new List<string> {"", ""};
-            var fileTypeIds = row[ReportColumns.FileType.ToString()]
+            var fileTypes = new List<string> { "", "" };
+            var fileTypeIds = row.Cells[ReportColumns.FileType.ToString()].Value
                 .ToString()
                 .Replace(Environment.NewLine, SplitChar.ToString())
                 .Split(SplitChar);
@@ -475,8 +483,8 @@ namespace KineticValidator
                 n++;
             }
 
-            var lines = new List<int> {-1, -1};
-            var lineIds = row[ReportColumns.LineId.ToString()]
+            var lines = new List<int> { -1, -1 };
+            var lineIds = row.Cells[ReportColumns.LineId.ToString()].Value
                 .ToString()
                 .Replace(Environment.NewLine, SplitChar.ToString())
                 .Split(SplitChar);
@@ -488,26 +496,51 @@ namespace KineticValidator
                 n++;
             }
 
+            var lineNumbers = new List<int> { -1, -1 };
+            lineIds = row.Cells[ReportColumns.LineNumber.ToString()].Value
+                .ToString()
+                .Replace(Environment.NewLine, SplitChar.ToString())
+                .Split(SplitChar);
+            n = 0;
+            foreach (var token in lineIds)
+            {
+                if (int.TryParse(token, out var line))
+                    lineNumbers[n] = line;
+                n++;
+            }
+
+            if (_useVsCode)
+            {
+                var execParams = "-r -g " + files[0] + ":" + lineNumbers[0];
+                VsCodeOpenFile(execParams);
+                return;
+            }
+
             // if click direct to LineID - open the collected files
-            if (e.ColumnIndex == (int) ReportColumns.LineId
-                && !string.IsNullOrEmpty(row[ReportColumns.LineId.ToString()]
+            if (e.ColumnIndex == (int)ReportColumns.LineId
+                && !string.IsNullOrEmpty(row.Cells[ReportColumns.LineId.ToString()].Value
                     .ToString())
-                && !string.IsNullOrEmpty(row[ReportColumns.FileType.ToString()]
+                && !string.IsNullOrEmpty(row.Cells[ReportColumns.FileType.ToString()].Value
                     .ToString())
-                && row[ReportColumns.ValidationType.ToString()]
+                && row.Cells[ReportColumns.ValidationType.ToString()].Value
                     .ToString() != ValidationTypeEnum.Scheme.ToString())
                 for (var i = 0; i < 2; i++)
                 {
                     if (string.IsNullOrEmpty(fileTypes[i]))
                     {
-                        if (_editors[i] != null && !_editors[i].IsDisposed) _editors[i].Close();
+                        if (_editors[i] != null && !_editors[i].IsDisposed)
+                            _editors[i].Close();
 
                         continue;
                     }
 
-                    if (!File.Exists(fileTypes[i])) continue;
+                    if (!File.Exists(fileTypes[i]))
+                        continue;
 
-                    if (_showPreview && _editors[i] != null && !_editors[i].IsDisposed)
+                    if (_showPreview && _editors[i] != null
+                        && !_editors[i].IsDisposed
+                        && (_editors[i].SingleLineBrackets != false
+                            || !_editors[i].Text.EndsWith(fileTypes[i])))
                     {
                         _editors[i].SingleLineBrackets = false;
                         _editors[i].LoadTextFromFile(fileTypes[i]);
@@ -518,6 +551,12 @@ namespace KineticValidator
                         {
                             SingleLineBrackets = false
                         };
+
+                        if (i == 0)
+                            _editors[0].Closing += OnClosing1;
+                        else
+                            _editors[1].Closing += OnClosing2;
+
                         _editors[i].LoadTextFromFile(fileTypes[i]);
                     }
 
@@ -536,25 +575,30 @@ namespace KineticValidator
                         _editors[i].Height = _editorPosition[i].WinH;
                     }
 
-                    if (i == 0) _editors[0].Closing += OnClosing1;
-                    else _editors[1].Closing += OnClosing2;
 
-                    _editors[i].SelectText(lines[i] + "] ");
+                    if (lines[i] != -1)
+                        _editors[i].PermanentHighlightText(lines[i] + "] ");
                 }
             // if click to any column except LineID - open original file
             else
+            {
                 for (var i = 0; i < 2; i++)
                 {
                     if (string.IsNullOrEmpty(files[i]))
                     {
-                        if (_editors[i] != null && !_editors[i].IsDisposed) _editors[i].Close();
+                        if (_editors[i] != null && !_editors[i].IsDisposed)
+                            _editors[i].Close();
 
                         continue;
                     }
 
-                    if (!File.Exists(files[i])) continue;
+                    if (!File.Exists(files[i]))
+                        continue;
 
-                    if (_showPreview && _editors[i] != null && !_editors[i].IsDisposed)
+                    if (_showPreview && _editors[i] != null
+                        && !_editors[i].IsDisposed
+                        && (_editors[i].SingleLineBrackets != _reformatJson
+                            || !_editors[i].Text.EndsWith(files[i])))
                     {
                         _editors[i].SingleLineBrackets = _reformatJson;
                         _editors[i].LoadJsonFromFile(files[i]);
@@ -565,6 +609,12 @@ namespace KineticValidator
                         {
                             SingleLineBrackets = _reformatJson
                         };
+
+                        if (i == 0)
+                            _editors[i].Closing += OnClosing1;
+                        else
+                            _editors[i].Closing += OnClosing2;
+
                         _editors[i].LoadJsonFromFile(files[i]);
                     }
 
@@ -582,12 +632,16 @@ namespace KineticValidator
                         _editors[i].Height = _editorPosition[i].WinH;
                     }
 
-                    if (i == 0) _editors[i].Closing += OnClosing1;
-                    else _editors[i].Closing += OnClosing2;
-
                     if (TryGetPositionByPathStr(_editors[i].EditorText, paths[i], out var startPos, out var endPos))
-                        _editors[i].SelectPosition(startPos, endPos + 1);
+                    {
+                        _editors[i].PermanentHighlight(startPos, endPos + 1);
+                    }
+                    else if (lineNumbers[i] != -1)
+                    {
+                        _editors[i].PermanentHighlightLines(lineNumbers[i] - 1, 0);
+                    }
                 }
+            }
         }
 
         private void OnClosing1(object sender, CancelEventArgs e)
@@ -630,7 +684,8 @@ namespace KineticValidator
 
         private void AlwaysIgnoreThisErrorToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            if (dataGridView_report.SelectedCells.Count <= 0) return;
+            if (dataGridView_report.SelectedCells.Count <= 0)
+                return;
 
             var rowNum = dataGridView_report.SelectedCells[0].RowIndex;
             //var currentRow = dataGridView_report.Rows[rowNum];
@@ -638,17 +693,18 @@ namespace KineticValidator
 
             var ignoreReportsCollection = new List<ReportItem>();
             var ignoreFile = _projectName + "\\" + IgnoreFileName;
-            if (File.Exists(ignoreFile)) ignoreReportsCollection = JsonIo.LoadJson<ReportItem>(ignoreFile);
+            if (File.Exists(ignoreFile))
+                ignoreReportsCollection = JsonIo.LoadJson<List<ReportItem>>(ignoreFile);
 
             var newReport = new ReportItem
             {
-                FullFileName = currentRow[(int) ReportColumns.FullFileName].ToString(),
-                FileType = currentRow[(int) ReportColumns.FileType].ToString(),
-                Message = currentRow[(int) ReportColumns.Message].ToString(),
-                JsonPath = currentRow[(int) ReportColumns.JsonPath].ToString(),
-                Severity = currentRow[(int) ReportColumns.Severity].ToString(),
-                ValidationType = currentRow[(int) ReportColumns.ValidationType].ToString(),
-                Source = currentRow[(int) ReportColumns.Source].ToString()
+                FullFileName = currentRow[(int)ReportColumns.FullFileName].ToString(),
+                FileType = currentRow[(int)ReportColumns.FileType].ToString(),
+                Message = currentRow[(int)ReportColumns.Message].ToString(),
+                JsonPath = currentRow[(int)ReportColumns.JsonPath].ToString(),
+                Severity = currentRow[(int)ReportColumns.Severity].ToString(),
+                ValidationType = currentRow[(int)ReportColumns.ValidationType].ToString(),
+                Source = currentRow[(int)ReportColumns.Source].ToString()
             };
             if (!ignoreReportsCollection.Any(n => n.Equals(newReport)))
             {
@@ -663,7 +719,8 @@ namespace KineticValidator
 
         private void DataGridView_report_CellMouseDown(object sender, DataGridViewCellMouseEventArgs e)
         {
-            if (e.Button != MouseButtons.Right) return;
+            if (e.Button != MouseButtons.Right)
+                return;
 
             if (sender is DataGridView dataGrid)
             {
@@ -691,19 +748,20 @@ namespace KineticValidator
                     _checkedValidators.Add(v.Method.Name);
         }
 
-        private void checkedListBox_validators_ItemCheck(object sender, ItemCheckEventArgs e)
+        private void CheckedListBox_validators_ItemCheck(object sender, ItemCheckEventArgs e)
         {
         }
 
         private void DataGridView_report_SelectionChanged(object sender, EventArgs e)
         {
-            if (dataGridView_report.SelectedCells.Count <= 0) return;
+            if (dataGridView_report.SelectedCells.Count <= 0)
+                return;
 
             var newColumn = dataGridView_report.SelectedCells[0].ColumnIndex;
             var newRow = dataGridView_report.SelectedCells[0].RowIndex;
 
-            if (_oldColumn == (int) ReportColumns.LineId && newColumn != (int) ReportColumns.LineId
-                || _oldColumn != (int) ReportColumns.LineId && newColumn == (int) ReportColumns.LineId
+            if (_oldColumn == (int)ReportColumns.LineId && newColumn != (int)ReportColumns.LineId
+                || _oldColumn != (int)ReportColumns.LineId && newColumn == (int)ReportColumns.LineId
                 || _oldRow != newRow)
             {
                 var param = new DataGridViewCellEventArgs(newColumn,
@@ -719,8 +777,10 @@ namespace KineticValidator
         {
             _showPreview = checkBox_showPreview.Checked;
 
-            if (_showPreview) dataGridView_report.SelectionChanged += DataGridView_report_SelectionChanged;
-            else dataGridView_report.SelectionChanged -= DataGridView_report_SelectionChanged;
+            if (_showPreview)
+                dataGridView_report.SelectionChanged += DataGridView_report_SelectionChanged;
+            else
+                dataGridView_report.SelectionChanged -= DataGridView_report_SelectionChanged;
         }
 
         private void CheckBox_saveFiles_CheckedChanged(object sender, EventArgs e)
@@ -739,6 +799,11 @@ namespace KineticValidator
             if (folderBrowserDialog1.ShowDialog() == DialogResult.OK &&
                 !string.IsNullOrEmpty(folderBrowserDialog1.SelectedPath))
                 _serverAssembliesPath = folderBrowserDialog1.SelectedPath;
+        }
+
+        private void CheckBox_vsCode_CheckedChanged(object sender, EventArgs e)
+        {
+            _useVsCode = checkBox_vsCode.Checked;
         }
 
         #endregion
@@ -785,8 +850,10 @@ namespace KineticValidator
                 Exit();
             }
 
-            if (_isCollectionFolder) Button_validateAll_Click(this, EventArgs.Empty);
-            else Button_validateProject_Click(this, EventArgs.Empty);
+            if (_isCollectionFolder)
+                Button_validateAll_Click(this, EventArgs.Empty);
+            else
+                Button_validateProject_Click(this, EventArgs.Empty);
 
             Exit();
         }
@@ -796,16 +863,7 @@ namespace KineticValidator
             _textLog.Append($"Validating {_projectName}... ");
             FlushLog();
 
-            if (Directory.Exists(_projectPath + "\\..\\shared\\")
-                && _projectPath.Contains("\\Deployment\\Server\\Apps\\")) _folderType = FolderType.Deployment;
-            //_textLog.AppendLine("Project is in the \"\\Deployment\\Server\\Apps\\MetaUI\\\" folder");
-            else if (Directory.Exists(_projectPath + "\\..\\..\\shared\\")) _folderType = FolderType.Repository;
-            //_textLog.AppendLine("Project is in the \"\\MetaUI\\\" folder");
-            else if (Directory.Exists(_projectPath + "\\..\\..\\..\\shared\\")
-                     && Utilities.GetShortFileName(_projectPath).StartsWith("Ice"))
-                _folderType = FolderType.IceRepository;
-            //_textLog.AppendLine("Project is in the \"\\MetaUI\\ICE\\\" folder");
-            else _folderType = FolderType.Unknown;
+            _folderType = GetFolderType(_projectPath);
 
             SetStatus("Searching project files...");
             // collect default project file list
@@ -855,7 +913,7 @@ namespace KineticValidator
             }
 
             // parse all project files and include imports
-            SetStatus($"Parsing {filesList.Count} files]");
+            SetStatus($"Parsing {filesList.Count} files");
             var processedFilesList = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var deserializeFileReportsCollection = new BlockingCollection<ReportItem>();
             var parseJsonObjectReportsCollection = new BlockingCollection<ReportItem>();
@@ -908,21 +966,25 @@ namespace KineticValidator
             Parallel.ForEach(_validatorsListNoPatch, validator =>
             {
                 var validatorMethodName = validator.Value.Method.Name;
-                if (!_checkedValidators.Contains(validatorMethodName)) return;
+                if (!_checkedValidators.Contains(validatorMethodName))
+                    return;
 
                 //SetStatus($"Validating: {validator.Key}");
                 var report = validator.Value(validatorMethodName);
-                foreach (var item in report) reportsCollection.Add(item);
+                foreach (var item in report)
+                    reportsCollection.Add(item);
             });
 
             Parallel.ForEach(_validatorsList, validator =>
             {
                 var validatorMethod = validator.Value.Method.Name;
-                if (!_checkedValidators.Contains(validatorMethod)) return;
+                if (!_checkedValidators.Contains(validatorMethod))
+                    return;
 
                 //SetStatus($"Validating: {validator.Key}");
                 var report = validator.Value(validatorMethod);
-                foreach (var item in report) reportsCollection.Add(item);
+                foreach (var item in report)
+                    reportsCollection.Add(item);
             });
 
             _textLog.AppendLine(
@@ -934,13 +996,17 @@ namespace KineticValidator
         private void ProcessReport(List<ReportItem> reports, bool saveFile = true, bool updateTable = true)
         {
             // get list of globally ignored errors
-            var systemIgnoreReportsCollection = JsonIo.LoadJson<ReportItem>(GlobalIgnoreFileName);
+            var systemIgnoreReportsCollection = JsonIo.LoadJson<List<ReportItem>>(GlobalIgnoreFileName);
             // get list of ignored errors and filter them out from report
             var ignoreFile = _projectName + "\\" + IgnoreFileName;
             var ignoreReportsCollection = new List<ReportItem>();
-            if (File.Exists(ignoreFile)) ignoreReportsCollection = JsonIo.LoadJson<ReportItem>(ignoreFile);
+            if (File.Exists(ignoreFile))
+                ignoreReportsCollection = JsonIo.LoadJson<List<ReportItem>>(ignoreFile);
 
-            ignoreReportsCollection.AddRange(JsonIo.LoadJson<ReportItem>(ignoreFile));
+            var jsonContent = JsonIo.LoadJson<List<ReportItem>>(ignoreFile);
+            if (jsonContent != null && jsonContent.Count > 0)
+                ignoreReportsCollection.AddRange(jsonContent);
+
             if (ignoreReportsCollection.Any() || systemIgnoreReportsCollection.Any())
                 for (var i = 0; i < reports.Count; i++)
                 {
@@ -965,6 +1031,8 @@ namespace KineticValidator
                     newRow[ReportColumns.ProjectName.ToString()] = reportLine.ProjectName;
                     newRow[ReportColumns.LineId.ToString()] =
                         reportLine.LineId.Replace(SplitChar.ToString(), Environment.NewLine);
+                    newRow[ReportColumns.LineNumber.ToString()] =
+                        reportLine.LineNumber.Replace(SplitChar.ToString(), Environment.NewLine);
                     newRow[ReportColumns.FileType.ToString()] =
                         reportLine.FileType.Replace(SplitChar.ToString(), Environment.NewLine);
                     newRow[ReportColumns.Message.ToString()] = reportLine.Message;
@@ -977,7 +1045,8 @@ namespace KineticValidator
                     _reportTable.Rows.Add(newRow);
                 }
 
-            if (!saveFile) return;
+            if (!saveFile)
+                return;
 
             try
             {
@@ -1005,7 +1074,8 @@ namespace KineticValidator
             BlockingCollection<ReportItem> deserializeFileReportsCollection,
             BlockingCollection<ReportItem> parseJsonObjectReportsCollection)
         {
-            if (processedList.ContainsKey(fullFileName)) return;
+            if (processedList.ContainsKey(fullFileName))
+                return;
 
             processedList.TryAdd(fullFileName, "");
             string jsonStr;
@@ -1048,12 +1118,21 @@ namespace KineticValidator
             dynamic jsonObject;
             try
             {
-                var jsonSettings = new JsonSerializerSettings
+                /*var jsonSettings = new JsonSerializerSettings
                 {
-                    Formatting = Formatting.None
+                    Formatting = Formatting.None,
+                    
                 };
 
-                jsonObject = JsonConvert.DeserializeObject(jsonStr, jsonSettings);
+                jsonObject = JsonConvert.DeserializeObject(jsonStr, jsonSettings);*/
+
+                jsonObject = JObject.Parse(jsonStr,
+                new JsonLoadSettings
+                {
+                    CommentHandling = CommentHandling.Load,
+                    LineInfoHandling = LineInfoHandling.Load,
+                    DuplicatePropertyNameHandling = DuplicatePropertyNameHandling.Error
+                });
             }
             catch (Exception ex)
             {
@@ -1101,7 +1180,8 @@ namespace KineticValidator
             BlockingCollection<ReportItem> deserializeFileReportsCollection,
             BlockingCollection<ReportItem> parseJsonObjectReportsCollection)
         {
-            if (token == null || rootCollection == null) return;
+            if (token == null || rootCollection == null)
+                return;
 
             switch (token)
             {
@@ -1111,7 +1191,16 @@ namespace KineticValidator
                     var propValue = "";
                     var jValue = jProperty.Value;
                     var name = jProperty.Name;
-                    if (jValue is JValue jPropertyValue) propValue = jPropertyValue.Value?.ToString();
+
+                    var lineInfo = (IJsonLineInfo)jProperty;
+                    var lineNumber = -1;
+                    if (lineInfo != null)
+                        lineNumber = ((IJsonLineInfo)jProperty).LineNumber;
+
+                    if (jValue is JValue jPropertyValue)
+                    {
+                        propValue = jPropertyValue.Value?.ToString();
+                    }
 
                     // get schema version
                     if (name == VersionTagName)
@@ -1123,6 +1212,7 @@ namespace KineticValidator
                                 ProjectName = _projectName,
                                 FullFileName = fullFileName,
                                 JsonPath = jsonPath,
+                                LineNumber = lineNumber.ToString(),
                                 Message = $"Scheme version inconsistent: {version}->{propValue}",
                                 ValidationType = ValidationTypeEnum.Logic.ToString(),
                                 Severity = ImportanceEnum.Error.ToString(),
@@ -1149,7 +1239,8 @@ namespace KineticValidator
                         Version = version,
                         ItemType = JsonItemType.Property,
                         Parent = parent,
-                        Shared = shared
+                        Shared = shared,
+                        SourceLineNumber = lineNumber
                     };
                     rootCollection.Add(newProperty);
 
@@ -1165,6 +1256,7 @@ namespace KineticValidator
                                 FullFileName = propValue,
                                 FileType = "",
                                 JsonPath = jsonPath,
+                                LineNumber = lineNumber.ToString(),
                                 Message = "Folder type not recognized (Deployment/Repository/...)",
                                 ValidationType = ValidationTypeEnum.File.ToString(),
                                 Severity = ImportanceEnum.Warning.ToString(),
@@ -1173,50 +1265,19 @@ namespace KineticValidator
                             parseJsonObjectReportsCollection.Add(report);
                             importFileName = GetFileFromRef(propValue);
                         }
-                        else if (_folderType == FolderType.Deployment) //deployment folder
+                        else
                         {
-                            importFileName = GetFileFromRef(propValue);
-                        }
-                        else // MetaUI folder
-                        {
-                            if (_folderType == FolderType.IceRepository)
-                            {
-                                // still in project folder
-                                if (fullFileName.Contains(_projectPath))
-                                {
-                                    importFileName = GetFileFromRef(propValue);
-                                    // goes to shared
-                                    if (importFileName.StartsWith("..")) importFileName = "..\\..\\" + importFileName;
-                                }
-                                // already in shared
-                                else
-                                {
-                                    importFileName = GetFileFromRef(propValue);
-                                }
-                            }
-                            else if (_folderType == FolderType.Repository)
-                            {
-                                // still in project folder
-                                if (fullFileName.Contains(_projectPath))
-                                {
-                                    importFileName = GetFileFromRef(propValue);
-                                    // goes to shared
-                                    if (importFileName.StartsWith("..")) importFileName = "..\\" + importFileName;
-                                }
-                                // already in shared
-                                else
-                                {
-                                    importFileName = GetFileFromRef(propValue);
-                                }
-                            }
+                            importFileName = FixFilePath(GetFileFromRef(propValue), fullFileName);
                         }
 
                         importFileName = GetFilePath(fullFileName)
-                                         + importFileName.Replace('/', '\\');
+                                          + importFileName.Replace('/', '\\');
                         importFileName = SimplifyPath(importFileName);
                         var importFileType = GetFileTypeFromJsonPath(jsonPath);
                         if (importFileType == JsoncContentType.Unknown)
+                        {
                             importFileType = Utilities.GetFileTypeFromFileName(importFileName, _fileTypes);
+                        }
 
                         if (!File.Exists(importFileName))
                         {
@@ -1226,6 +1287,7 @@ namespace KineticValidator
                                 FullFileName = importFileName,
                                 FileType = importFileType.ToString(),
                                 JsonPath = jsonPath,
+                                LineNumber = lineNumber.ToString(),
                                 Message = "File doesn't exists",
                                 ValidationType = ValidationTypeEnum.File.ToString(),
                                 Severity = ImportanceEnum.Error.ToString(),
@@ -1262,6 +1324,7 @@ namespace KineticValidator
                                     ProjectName = _projectName,
                                     FullFileName = fullFileName,
                                     JsonPath = jsonPath,
+                                    LineNumber = lineNumber.ToString(),
                                     Message = $"File type inconsistent: {fileType}->{newFileType}",
                                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                                     Severity = ImportanceEnum.Warning.ToString(),
@@ -1401,13 +1464,14 @@ namespace KineticValidator
                         parseJsonObjectReportsCollection.Add(report);
                     }
                 }
-                    break;
+                break;
             }
         }
 
         private void ActivateUiControls(bool active)
         {
-            if (_runFromCmdLine) return;
+            if (_runFromCmdLine)
+                return;
 
             if (active)
             {
@@ -1436,13 +1500,15 @@ namespace KineticValidator
             _projectName = Utilities.GetShortFileName(_projectPath);
 
             // check if it's a collection or project folder
-            if (string.IsNullOrEmpty(_projectPath)) return;
+            if (string.IsNullOrEmpty(_projectPath))
+                return;
 
             _isCollectionFolder = false;
             var n = _initialProjectFiles.Select(file => _projectPath + "\\" + file)
                 .Count(fullFileName => !File.Exists(fullFileName));
 
-            if (n > _initialProjectFiles.Length / 2) _isCollectionFolder = true;
+            if (n > _initialProjectFiles.Length / 2)
+                _isCollectionFolder = true;
 
 
             if (!_runFromCmdLine)
@@ -1457,7 +1523,7 @@ namespace KineticValidator
                     var reportFileName = _projectName + "\\" + ReportJsonFileName;
                     if (File.Exists(reportFileName))
                     {
-                        var reportsCollection = JsonIo.LoadJson<ReportItem>(reportFileName);
+                        var reportsCollection = JsonIo.LoadJson<List<ReportItem>>(reportFileName);
                         ProcessReport(reportsCollection, false);
                     }
                 }
@@ -1466,7 +1532,8 @@ namespace KineticValidator
 
         private void InitReportsGrid(bool collection = false)
         {
-            if (_runFromCmdLine) return;
+            if (_runFromCmdLine)
+                return;
 
             _reportTable = new DataTable("Examples");
             _reportTable.Clear();
@@ -1483,8 +1550,9 @@ namespace KineticValidator
                 {
                     DataPropertyName = col,
                     Name = col,
+                    HeaderText = col,
                     AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells,
-                    SortMode = DataGridViewColumnSortMode.NotSortable // temp. disabled
+                    //SortMode = DataGridViewColumnSortMode.NotSortable // temp. disable
                 };
 
                 if (col == ReportColumns.JsonPath.ToString()
@@ -1494,12 +1562,14 @@ namespace KineticValidator
                     column.Width = 50;
                 }
 
-                if (col == ReportColumns.ProjectName.ToString() && !collection) column.Visible = false;
+                if (col == ReportColumns.ProjectName.ToString() && !collection)
+                    column.Visible = false;
 
                 dataGridView_report.Columns.Add(column);
             }
 
-            dataGridView_report.DataError += delegate { };
+            dataGridView_report.DataError += delegate
+            { };
             dataGridView_report.RowHeadersVisible = false;
             dataGridView_report.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.DisplayedCells;
             dataGridView_report.Columns[ReportColumns.Message.ToString()].Width =
@@ -1508,16 +1578,19 @@ namespace KineticValidator
             dataGridView_report.Columns[ReportColumns.Source.ToString()].Visible = false;
             dataGridView_report.Columns[ReportColumns.ValidationType.ToString()].Visible = false;
 
-            if (_showPreview) dataGridView_report.SelectionChanged += DataGridView_report_SelectionChanged;
+            if (_showPreview)
+                dataGridView_report.SelectionChanged += DataGridView_report_SelectionChanged;
         }
 
         private void SaveCollectionToFile(JsonProperty[] typeCollection, string fileName)
         {
-            if (!typeCollection.Any()) return;
+            if (!typeCollection.Any())
+                return;
 
             try
             {
-                if (!Directory.Exists(_projectName)) Directory.CreateDirectory(_projectName);
+                if (!Directory.Exists(_projectName))
+                    Directory.CreateDirectory(_projectName);
             }
             catch (Exception ex)
             {
@@ -1527,7 +1600,8 @@ namespace KineticValidator
 
             JsonIo.SaveJson(typeCollection, fileName + ".json", true);
 
-            if (_jsonPropertiesCollection == null) return;
+            if (_jsonPropertiesCollection == null)
+                return;
 
             var maxId = _jsonPropertiesCollection.LastOrDefault()?.LineId;
             var maxIdLength = maxId.ToString().Length;
@@ -1542,8 +1616,10 @@ namespace KineticValidator
                           + new string(' ', property.JsonDepth * jsonIdent)
                           + property.Name;
                 if (property.ItemType == JsonItemType.Array
-                    || property.ItemType == JsonItemType.Object) fileContent.AppendLine(str);
-                else fileContent.AppendLine(str + ": \"" + property.Value + "\"");
+                    || property.ItemType == JsonItemType.Object)
+                    fileContent.AppendLine(str);
+                else
+                    fileContent.AppendLine(str + ": \"" + property.Value + "\"");
             }
 
             try
@@ -1606,24 +1682,54 @@ namespace KineticValidator
 
         private void FlushLog()
         {
-            if (_textLog.Length <= 0) return;
+            if (_textLog.Length <= 0)
+                return;
 
             if (!_runFromCmdLine)
-                Invoke((MethodInvoker) delegate
-                {
-                    textBox_logText.Text += _textLog.ToString();
-                    textBox_logText.SelectionStart = textBox_logText.Text.Length;
-                    textBox_logText.ScrollToCaret();
-                });
-            else Console.WriteLine(_textLog.ToString());
+                Invoke((MethodInvoker)delegate
+               {
+                   textBox_logText.Text += _textLog.ToString();
+                   textBox_logText.SelectionStart = textBox_logText.Text.Length;
+                   textBox_logText.ScrollToCaret();
+               });
+            else
+                Console.WriteLine(_textLog.ToString());
 
             _textLog.Clear();
         }
 
         private void SetStatus(string status)
         {
-            if (!_runFromCmdLine) Invoke((MethodInvoker) delegate { toolStripStatusLabel1.Text = status; });
-            else if (!string.IsNullOrEmpty(status)) Console.WriteLine(status);
+            if (!_runFromCmdLine)
+                Invoke((MethodInvoker)delegate
+                { toolStripStatusLabel1.Text = status; });
+            else if (!string.IsNullOrEmpty(status))
+                Console.WriteLine(status);
+        }
+
+        private FolderType GetFolderType(string projectPath)
+        {
+            var folderType = FolderType.Unknown;
+
+            //Project is in the \"\\Deployment\\Server\\Apps\\MetaUI\\\" folder
+            if (Directory.Exists(projectPath + "\\..\\shared\\")
+                 && projectPath.Contains("\\Deployment\\Server\\Apps\\"))
+            {
+                folderType = FolderType.Deployment;
+            }
+            //Project is in the \"\\MetaUI\\\" folder
+            else if (Directory.Exists(projectPath + "\\..\\..\\shared\\"))
+            {
+                folderType = FolderType.Repository;
+            }
+            //Project is in the \"\\MetaUI\\ICE\\\" folder
+            else if (Directory.Exists(projectPath + "\\..\\..\\..\\shared\\")
+                     && Utilities.GetShortFileName(projectPath).StartsWith("Ice"))
+            {
+                folderType = FolderType.IceRepository;
+            }
+
+            return folderType;
         }
 
         private string GetFilePath(string longFileName)
@@ -1651,7 +1757,8 @@ namespace KineticValidator
             var fileName = "";
             foreach (var file in _fileTypes)
             {
-                if (file.FileType.ToString() != fileType) continue;
+                if (file.FileType.ToString() != fileType)
+                    continue;
 
                 var projectName = Utilities.GetShortFileName(_projectPath);
                 if (noExtension)
@@ -1675,9 +1782,61 @@ namespace KineticValidator
             return pos > 0 ? refString.Substring(0, pos) : "";
         }
 
+        private string FixFilePath(string importedFileFullName, string originalFileFullName)
+        {
+            var fixedFileName = "";
+
+            if (_folderType == FolderType.Deployment) //deployment folder
+            {
+                fixedFileName = importedFileFullName;
+            }
+            else // MetaUI folder
+            {
+                if (_folderType == FolderType.IceRepository)
+                {
+                    // still in project folder
+                    if (originalFileFullName.Contains(_projectPath))
+                    {
+                        fixedFileName = importedFileFullName;
+                        // goes to shared
+                        if (fixedFileName.StartsWith(".."))
+                        {
+                            fixedFileName = "..\\..\\" + fixedFileName;
+                        }
+                    }
+                    // already in shared
+                    else
+                    {
+                        fixedFileName = importedFileFullName;
+                    }
+                }
+                else if (_folderType == FolderType.Repository)
+                {
+                    // still in project folder
+                    if (originalFileFullName.Contains(_projectPath))
+                    {
+                        fixedFileName = importedFileFullName;
+                        // goes to shared
+                        if (fixedFileName.StartsWith(".."))
+                        {
+                            fixedFileName = "..\\" + fixedFileName;
+                        }
+                    }
+                    // already in shared
+                    else
+                    {
+                        fixedFileName = importedFileFullName;
+                    }
+                }
+            }
+
+            return fixedFileName;
+        }
+
         private string SimplifyPath(string path)
         {
-            if (!path.Contains(".\\")) return path;
+            if (!path.Contains(".\\"))
+                return path;
 
             var chunks = new List<string>();
             chunks.AddRange(path.Split('\\'));
@@ -1697,8 +1856,10 @@ namespace KineticValidator
 
             var simplePath = new StringBuilder();
             foreach (var chunk in chunks)
-                if (simplePath.Length > 0) simplePath.Append("\\" + chunk);
-                else simplePath.Append(chunk);
+                if (simplePath.Length > 0)
+                    simplePath.Append("\\" + chunk);
+                else
+                    simplePath.Append(chunk);
 
             return simplePath.ToString();
         }
@@ -1706,9 +1867,11 @@ namespace KineticValidator
         private void Exit()
         {
             // WinForms app
-            if (Application.MessageLoop) Application.Exit();
+            if (Application.MessageLoop)
+                Application.Exit();
             // Console app
-            else Environment.Exit(1);
+            else
+                Environment.Exit(1);
         }
 
         private bool TryGetPositionByPathStr(string json, string path, out int startPos, out int endPos)
@@ -1719,13 +1882,35 @@ namespace KineticValidator
             var pathList = ParseJsonPathsStr(json.Replace(' ', ' '), true);
 
             var pathItems = pathList.Where(n => n.Path == path).ToArray();
-            if (!pathItems.Any()) return false;
+            if (!pathItems.Any())
+                return false;
 
             startPos = pathItems.Last().StartPosition;
             endPos = pathItems.Last().EndPosition;
             return true;
         }
 
+        private void VsCodeOpenFile(string command)
+        {
+            ProcessStartInfo ProcessInfo;
+            Process Process;
+
+            ProcessInfo = new ProcessStartInfo("code", command);
+            ProcessInfo.CreateNoWindow = true;
+            ProcessInfo.UseShellExecute = true;
+            ProcessInfo.WindowStyle = ProcessWindowStyle.Hidden;
+
+            try
+            {
+                Process = Process.Start(ProcessInfo);
+            }
+            catch (Exception Ex)
+            {
+                textBox_logText.Text += Ex.Message;
+            }
+        }
+
         #endregion
+
     }
 }

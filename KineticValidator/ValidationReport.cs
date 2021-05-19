@@ -32,6 +32,7 @@ namespace KineticValidator
     {
         [DataMember] ProjectName,
         [DataMember] LineId,
+        [DataMember] LineNumber,
         [DataMember] FileType,
         [DataMember] Message,
         [DataMember] JsonPath,
@@ -62,6 +63,7 @@ namespace KineticValidator
         [DataMember] public string FileType;
         [DataMember] public string Message;
         [DataMember] public string LineId;
+        [DataMember] public string LineNumber;
         [DataMember] public string JsonPath;
         [DataMember] public string ValidationType;
         [DataMember] public string Severity;
@@ -74,6 +76,7 @@ namespace KineticValidator
             FileType = JsoncContentType.Unknown.ToString();
             Message = "";
             LineId = "";
+            LineNumber = "";
             JsonPath = "";
             Severity = ImportanceEnum.Note.ToString();
             ValidationType = ValidationTypeEnum.None.ToString();
@@ -89,6 +92,7 @@ namespace KineticValidator
                 "\tFileType: " + FileType + Environment.NewLine +
                 "\tMessage: " + Message + Environment.NewLine +
                 "\tLineId: " + LineId + Environment.NewLine +
+                "\tLineNumber: " + LineNumber + Environment.NewLine +
                 "\tJsonPath: " + JsonPath + Environment.NewLine +
                 "\tImportance: " + Severity + Environment.NewLine +
                 "\tValidationType: " + ValidationType + Environment.NewLine +

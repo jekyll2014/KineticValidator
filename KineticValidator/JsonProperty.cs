@@ -46,6 +46,7 @@ namespace KineticValidator
 
         [DataMember] public string Parent; // parent name
         [DataMember] public bool Shared; // is original file in shared or project folder
+        [DataMember] public int SourceLineNumber; // line number in the source file
         [DataMember] public int StartPosition; // property beginning byte # in the original file
         [DataMember] public int EndPosition; // property ending byte # in the original file
 
@@ -72,6 +73,7 @@ namespace KineticValidator
             ItemType = JsonItemType.Unknown;
             Parent = "";
             Shared = false;
+            SourceLineNumber = -1;
             StartPosition = -1;
             EndPosition = -1;
         }

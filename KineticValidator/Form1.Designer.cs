@@ -34,6 +34,7 @@ namespace KineticValidator
             this.tabControl1 = new System.Windows.Forms.TabControl();
             this.tabPage_DataCollection = new System.Windows.Forms.TabPage();
             this.splitContainer1 = new System.Windows.Forms.SplitContainer();
+            this.checkBox_vsCode = new System.Windows.Forms.CheckBox();
             this.checkBox_saveReport = new System.Windows.Forms.CheckBox();
             this.checkBox_saveFiles = new System.Windows.Forms.CheckBox();
             this.button_validateAll = new System.Windows.Forms.Button();
@@ -98,6 +99,7 @@ namespace KineticValidator
             // 
             // splitContainer1.Panel1
             // 
+            this.splitContainer1.Panel1.Controls.Add(this.checkBox_vsCode);
             this.splitContainer1.Panel1.Controls.Add(this.checkBox_saveReport);
             this.splitContainer1.Panel1.Controls.Add(this.checkBox_saveFiles);
             this.splitContainer1.Panel1.Controls.Add(this.button_validateAll);
@@ -118,10 +120,21 @@ namespace KineticValidator
             this.splitContainer1.SplitterDistance = 346;
             this.splitContainer1.TabIndex = 1;
             // 
+            // checkBox_vsCode
+            // 
+            this.checkBox_vsCode.AutoSize = true;
+            this.checkBox_vsCode.Location = new System.Drawing.Point(0, 235);
+            this.checkBox_vsCode.Name = "checkBox_vsCode";
+            this.checkBox_vsCode.Size = new System.Drawing.Size(117, 17);
+            this.checkBox_vsCode.TabIndex = 7;
+            this.checkBox_vsCode.Text = "Preview in VSCode";
+            this.checkBox_vsCode.UseVisualStyleBackColor = true;
+            this.checkBox_vsCode.CheckedChanged += new System.EventHandler(this.CheckBox_vsCode_CheckedChanged);
+            // 
             // checkBox_saveReport
             // 
             this.checkBox_saveReport.AutoSize = true;
-            this.checkBox_saveReport.Location = new System.Drawing.Point(1, 235);
+            this.checkBox_saveReport.Location = new System.Drawing.Point(1, 258);
             this.checkBox_saveReport.Name = "checkBox_saveReport";
             this.checkBox_saveReport.Size = new System.Drawing.Size(81, 17);
             this.checkBox_saveReport.TabIndex = 6;
@@ -132,7 +145,7 @@ namespace KineticValidator
             // checkBox_saveFiles
             // 
             this.checkBox_saveFiles.AutoSize = true;
-            this.checkBox_saveFiles.Location = new System.Drawing.Point(1, 258);
+            this.checkBox_saveFiles.Location = new System.Drawing.Point(1, 281);
             this.checkBox_saveFiles.Name = "checkBox_saveFiles";
             this.checkBox_saveFiles.Size = new System.Drawing.Size(96, 17);
             this.checkBox_saveFiles.TabIndex = 5;
@@ -170,11 +183,11 @@ namespace KineticValidator
             | System.Windows.Forms.AnchorStyles.Right)));
             this.checkedListBox_validators.CheckOnClick = true;
             this.checkedListBox_validators.FormattingEnabled = true;
-            this.checkedListBox_validators.Location = new System.Drawing.Point(0, 281);
+            this.checkedListBox_validators.Location = new System.Drawing.Point(0, 311);
             this.checkedListBox_validators.Name = "checkedListBox_validators";
-            this.checkedListBox_validators.Size = new System.Drawing.Size(343, 109);
+            this.checkedListBox_validators.Size = new System.Drawing.Size(343, 79);
             this.checkedListBox_validators.TabIndex = 2;
-            this.checkedListBox_validators.ItemCheck += new System.Windows.Forms.ItemCheckEventHandler(this.checkedListBox_validators_ItemCheck);
+            this.checkedListBox_validators.ItemCheck += new System.Windows.Forms.ItemCheckEventHandler(this.CheckedListBox_validators_ItemCheck);
             this.checkedListBox_validators.Leave += new System.EventHandler(this.CheckedListBox_validators_Leave);
             // 
             // checkBox_reformatJson
@@ -394,6 +407,7 @@ namespace KineticValidator
         private System.Windows.Forms.CheckBox checkBox_saveFiles;
         private System.Windows.Forms.CheckBox checkBox_saveReport;
         private System.Windows.Forms.Button button_selectAssemblyFolder;
+        private System.Windows.Forms.CheckBox checkBox_vsCode;
     }
 }
 

@@ -46,7 +46,7 @@ namespace KineticValidator
         private static string _jsonText = "";
         private static List<ParsedProperty> _pathIndex = new List<ParsedProperty>();
 
-        private static readonly char[] EscapeChars = {'\"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'};
+        private static readonly char[] EscapeChars = { '\"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u' };
         private static readonly char[] TokenOrNumber = "-0123456789.truefalsenull".ToCharArray().ToArray();
 
         private static bool _skipComments;
@@ -106,7 +106,7 @@ namespace KineticValidator
         private static int FindStartOfNextToken(int pos, out PropertyType foundObjectType)
         {
             foundObjectType = PropertyType.Empty;
-            var allowedChars = new List<char> {' ', '\t', '\r', '\n', ','};
+            var allowedChars = new List<char> { ' ', '\t', '\r', '\n', ',' };
             var tokenOrNumber = "-0123456789.truefalsenull".ToCharArray().ToList();
 
             for (; pos < _jsonText.Length; pos++)
@@ -244,7 +244,7 @@ namespace KineticValidator
 
         private static int GetPropertyName(int pos, string currentPath)
         {
-            var incorrectChars = new List<char> {'\r', '\n'};
+            var incorrectChars = new List<char> { '\r', '\n' };
 
             var newElement = new ParsedProperty
             {
@@ -290,7 +290,8 @@ namespace KineticValidator
                     }
 
                     pos = GetPropertyDivider(pos, currentPath);
-                    if (_errorFound) return pos;
+                    if (_errorFound)
+                        return pos;
 
                     if (_jsonText[pos] == ',' || _jsonText[pos] == ']') // it's a list of values
                     {
@@ -312,7 +313,8 @@ namespace KineticValidator
 
                     var valueStartPosition = pos;
                     pos = GetPropertyValue(pos, currentPath);
-                    if (_errorFound) return pos;
+                    if (_errorFound)
+                        return pos;
 
                     if (string.IsNullOrEmpty(currentPath))
                     {
@@ -331,7 +333,8 @@ namespace KineticValidator
                             newElement.Type = PropertyType.Object;
                             newElement.Value = "";
                             newElement.EndPosition = pos = GetObject(pos, currentPath, false);
-                            if (_errorFound) return pos;
+                            if (_errorFound)
+                                return pos;
 
                             return pos;
                         //it's an array
@@ -339,7 +342,8 @@ namespace KineticValidator
                             newElement.Type = PropertyType.Array;
                             newElement.Value = "";
                             newElement.EndPosition = pos = GetArray(pos, currentPath);
-                            if (_errorFound) return pos;
+                            if (_errorFound)
+                                return pos;
                             return pos;
                         // it's a property
                         default:
@@ -369,7 +373,7 @@ namespace KineticValidator
             };
             _pathIndex.Add(newElement);
 
-            var endingChars = new List<char> {',', ']', '\r', '\n', '/'};
+            var endingChars = new List<char> { ',', ']', '\r', '\n', '/' };
 
             for (; pos < _jsonText.Length; pos++) // searching for property name end
             {
@@ -416,7 +420,7 @@ namespace KineticValidator
 
         private static int GetPropertyDivider(int pos, string currentPath)
         {
-            var allowedChars = new List<char> {' ', '\t', '\r', '\n'};
+            var allowedChars = new List<char> { ' ', '\t', '\r', '\n' };
             for (; pos < _jsonText.Length; pos++)
             {
                 switch (_jsonText[pos])
@@ -444,7 +448,7 @@ namespace KineticValidator
 
         private static int GetPropertyValue(int pos, string currentPath)
         {
-            var allowedChars = new[] {' ', '\t', '\r', '\n'};
+            var allowedChars = new[] { ' ', '\t', '\r', '\n' };
             for (; pos < _jsonText.Length; pos++)
             {
                 switch (_jsonText[pos])
@@ -461,7 +465,7 @@ namespace KineticValidator
                     case '\"':
                     {
                         pos++;
-                        var incorrectChars = new List<char> {'\r', '\n'}; // to be added
+                        var incorrectChars = new List<char> { '\r', '\n' }; // to be added
 
                         for (; pos < _jsonText.Length; pos++)
                         {
@@ -502,7 +506,7 @@ namespace KineticValidator
                     default:
                         if (!allowedChars.Contains(_jsonText[pos])) // it's a property non-string value
                         {
-                            var endingChars = new[] {',', ']', '}', ' ', '\t', '\r', '\n', '/'};
+                            var endingChars = new[] { ',', ']', '}', ' ', '\t', '\r', '\n', '/' };
                             var allowedValueChars = "-0123456789.truefalsenull".ToCharArray();
 
                             for (; pos < _jsonText.Length; pos++)
@@ -534,10 +538,12 @@ namespace KineticValidator
             var arrayIndex = 0;
             for (; pos < _jsonText.Length; pos++)
             {
-                if (_errorFound) return pos;
+                if (_errorFound)
+                    return pos;
 
                 pos = FindStartOfNextToken(pos, out var foundObjectType);
-                if (_errorFound) return pos;
+                if (_errorFound)
+                    return pos;
 
                 switch (foundObjectType)
                 {
@@ -589,10 +595,12 @@ namespace KineticValidator
 
             for (; pos < _jsonText.Length; pos++)
             {
-                if (_errorFound) return pos;
+                if (_errorFound)
+                    return pos;
 
                 pos = FindStartOfNextToken(pos, out var foundObjectType);
-                if (_errorFound) return pos;
+                if (_errorFound)
+                    return pos;
 
                 switch (foundObjectType)
                 {
