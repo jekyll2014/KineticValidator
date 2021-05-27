@@ -1017,34 +1017,40 @@ namespace KineticValidator
             {
                 var propertyList = GetParsedFile(file.Key);
 
-                var item2 = propertyList.Where(n =>
+                var duplicateIdList = propertyList.Where(n =>
                         n.Type == PropertyType.Property)
                     .GroupBy(n => n.Path)
-                    .Where(n => n.Count() > 1);
+                    .Where(n => n.Count() > 1).ToArray();
 
-                var duplicateIdList = item2 as IGrouping<string, ParsedProperty>[] ?? item2.ToArray();
                 if (!duplicateIdList.Any())
                     continue;
 
                 foreach (var dup in duplicateIdList)
                 {
-                    var values = "";
+                    var names = "";
                     foreach (var item in dup)
-                        if (string.IsNullOrEmpty(values))
-                            values += "\"" + item.Value + "\"";
+                        if (string.IsNullOrEmpty(names))
+                            names += item.Value;
                         else
-                            values += ", \"" + item.Value + "\"";
+                            names += ", " + item.Value;
 
                     var reportItem = new ReportItem
                     {
                         ProjectName = _projectName,
-                        FullFileName = file.Key,
-                        JsonPath = dup.First().Path,
+                        FullFileName = file.Key + _splitChar.ToString()
+                        + file.Key,
+                        JsonPath = "[1]" + dup.First().Path
+                        + _splitChar.ToString()
+                        + "[2]" + dup.Last().Path,
+                        StartPosition = dup.First().StartPosition + _splitChar.ToString()
+                        + dup.Last().StartPosition,
+                        EndPosition = dup.First().EndPosition + _splitChar.ToString()
+                        + dup.Last().EndPosition,
                         Message =
-                            $"JSON file has duplicate property names \"{dup.First().Name}\" with values: {values}",
+                            $"JSON file has duplicate property names [{names}]",
                         ValidationType = ValidationTypeEnum.Parse.ToString(),
                         Severity = ImportanceEnum.Error.ToString(),
-                        Source = methodName
+                        Source = methodName,
                     };
                     report.Add(reportItem);
                 }

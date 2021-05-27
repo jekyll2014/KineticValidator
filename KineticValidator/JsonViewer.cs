@@ -174,6 +174,9 @@ namespace KineticValidator
 
         private bool ConfirmOnCloseFile()
         {
+            if (!saveToolStripMenuItem.Visible)
+                return true;
+
             if (!_textChanged)
                 return true;
 
@@ -184,7 +187,6 @@ namespace KineticValidator
                 if (!SaveTextToFile(_fileName, true, false))
                 {
                     MessageBox.Show("Failed to save file!");
-
                     return false;
                 }
             }
@@ -380,7 +382,18 @@ namespace KineticValidator
 
             Text += fullFileName;
             _fileName = fullFileName;
-            _textArea.Text = File.ReadAllText(fullFileName);
+
+            var fileContent = "";
+            try
+            {
+                fileContent = File.ReadAllText(fullFileName);
+            }
+            catch (Exception Ex)
+            {
+
+            }
+
+            _textArea.Text = fileContent;
 
             _textArea.TextChanged -= TextChangedFlag;
             _textChanged = false;
@@ -405,9 +418,20 @@ namespace KineticValidator
 
             Text += fullFileName;
             _fileName = fullFileName;
+
+            var fileContent = "";
+            try
+            {
+                fileContent = File.ReadAllText(fullFileName);
+            }
+            catch (Exception Ex)
+            {
+
+            }
+
             _textArea.Text = SingleLineBrackets
-                ? JsonIo.BeautifyJson(File.ReadAllText(fullFileName), SingleLineBrackets)
-                : File.ReadAllText(fullFileName);
+                ? JsonIo.BeautifyJson(fileContent, SingleLineBrackets)
+                : fileContent;
 
             _textArea.TextChanged -= TextChangedFlag;
             _textChanged = SingleLineBrackets;
@@ -427,7 +451,7 @@ namespace KineticValidator
 
             if (showDialog)
             {
-                var choice = MessageBox.Show("Are you sure to exit?", "Do you want to save file?", MessageBoxButtons.YesNo);
+                var choice = MessageBox.Show("Do you want to save file?", "File has been changed", MessageBoxButtons.YesNo);
                 if (choice == DialogResult.No)
                 {
                     return false;
@@ -438,7 +462,6 @@ namespace KineticValidator
             {
                 if (makeBackup)
                 {
-                    //var bakFileName = ChangeFileExt(fullFileName, "bak");
                     var bakFileName = fullFileName + ".bak";
 
                     if (File.Exists(fullFileName))

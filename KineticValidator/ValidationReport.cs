@@ -33,6 +33,8 @@ namespace KineticValidator
         [DataMember] ProjectName,
         [DataMember] LineId,
         [DataMember] LineNumber,
+        [DataMember] StartPosition,
+        [DataMember] EndPosition,
         [DataMember] FileType,
         [DataMember] Message,
         [DataMember] JsonPath,
@@ -64,6 +66,8 @@ namespace KineticValidator
         [DataMember] public string Message;
         [DataMember] public string LineId;
         [DataMember] public string LineNumber;
+        [DataMember] public string StartPosition;
+        [DataMember] public string EndPosition;
         [DataMember] public string JsonPath;
         [DataMember] public string ValidationType;
         [DataMember] public string Severity;
@@ -77,6 +81,8 @@ namespace KineticValidator
             Message = "";
             LineId = "";
             LineNumber = "";
+            StartPosition = "";
+            EndPosition = "";
             JsonPath = "";
             Severity = ImportanceEnum.Note.ToString();
             ValidationType = ValidationTypeEnum.None.ToString();

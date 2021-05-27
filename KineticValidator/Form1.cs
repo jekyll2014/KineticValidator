@@ -509,6 +509,32 @@ namespace KineticValidator
                 n++;
             }
 
+            var startPositions = new List<int> { -1, -1 };
+            lineIds = row.Cells[ReportColumns.StartPosition.ToString()].Value
+                .ToString()
+                .Replace(Environment.NewLine, SplitChar.ToString())
+                .Split(SplitChar);
+            n = 0;
+            foreach (var token in lineIds)
+            {
+                if (int.TryParse(token, out var line))
+                    startPositions[n] = line;
+                n++;
+            }
+
+            var endPositions = new List<int> { -1, -1 };
+            lineIds = row.Cells[ReportColumns.EndPosition.ToString()].Value
+                .ToString()
+                .Replace(Environment.NewLine, SplitChar.ToString())
+                .Split(SplitChar);
+            n = 0;
+            foreach (var token in lineIds)
+            {
+                if (int.TryParse(token, out var line))
+                    endPositions[n] = line;
+                n++;
+            }
+
             if (_useVsCode)
             {
                 var execParams = "-r -g " + files[0] + ":" + lineNumbers[0];
@@ -639,6 +665,10 @@ namespace KineticValidator
                     else if (lineNumbers[i] != -1)
                     {
                         _editors[i].PermanentHighlightLines(lineNumbers[i] - 1, 0);
+                    }
+                    else if (startPositions[i] != -1 && endPositions[i] != -1)
+                    {
+                        _editors[i].PermanentHighlight(startPositions[i], endPositions[i] + 1);
                     }
                 }
             }
@@ -1028,20 +1058,24 @@ namespace KineticValidator
                 foreach (var reportLine in reports)
                 {
                     var newRow = _reportTable.NewRow();
-                    newRow[ReportColumns.ProjectName.ToString()] = reportLine.ProjectName;
+                    newRow[ReportColumns.ProjectName.ToString()] = reportLine.ProjectName ?? "";
                     newRow[ReportColumns.LineId.ToString()] =
-                        reportLine.LineId.Replace(SplitChar.ToString(), Environment.NewLine);
+                        reportLine.LineId?.Replace(SplitChar.ToString(), Environment.NewLine);
                     newRow[ReportColumns.LineNumber.ToString()] =
-                        reportLine.LineNumber.Replace(SplitChar.ToString(), Environment.NewLine);
+                        reportLine.LineNumber?.Replace(SplitChar.ToString(), Environment.NewLine);
+                    newRow[ReportColumns.StartPosition.ToString()] =
+                        reportLine.StartPosition?.Replace(SplitChar.ToString(), Environment.NewLine);
+                    newRow[ReportColumns.EndPosition.ToString()] =
+                        reportLine.EndPosition?.Replace(SplitChar.ToString(), Environment.NewLine);
                     newRow[ReportColumns.FileType.ToString()] =
-                        reportLine.FileType.Replace(SplitChar.ToString(), Environment.NewLine);
-                    newRow[ReportColumns.Message.ToString()] = reportLine.Message;
+                        reportLine.FileType?.Replace(SplitChar.ToString(), Environment.NewLine);
+                    newRow[ReportColumns.Message.ToString()] = reportLine.Message ?? "";
                     newRow[ReportColumns.JsonPath.ToString()] =
-                        reportLine.JsonPath.Replace(SplitChar.ToString(), Environment.NewLine);
-                    newRow[ReportColumns.ValidationType.ToString()] = reportLine.ValidationType;
-                    newRow[ReportColumns.Severity.ToString()] = reportLine.Severity;
+                        reportLine.JsonPath?.Replace(SplitChar.ToString(), Environment.NewLine);
+                    newRow[ReportColumns.ValidationType.ToString()] = reportLine.ValidationType ?? "";
+                    newRow[ReportColumns.Severity.ToString()] = reportLine.Severity ?? "";
                     newRow[ReportColumns.FullFileName.ToString()] =
-                        reportLine.FullFileName.Replace(SplitChar.ToString(), Environment.NewLine);
+                        reportLine.FullFileName?.Replace(SplitChar.ToString(), Environment.NewLine);
                     _reportTable.Rows.Add(newRow);
                 }
 
@@ -1563,6 +1597,12 @@ namespace KineticValidator
                 }
 
                 if (col == ReportColumns.ProjectName.ToString() && !collection)
+                    column.Visible = false;
+
+                if (col == ReportColumns.StartPosition.ToString())
+                    column.Visible = false;
+
+                if (col == ReportColumns.EndPosition.ToString())
                     column.Visible = false;
 
                 dataGridView_report.Columns.Add(column);
