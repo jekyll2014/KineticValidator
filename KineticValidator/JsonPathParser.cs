@@ -52,8 +52,7 @@ namespace KineticValidator
         private static bool _skipComments;
         private static bool _errorFound;
 
-        public static List<ParsedProperty> ParseJsonPathsStr(string json, out int pos, out bool errorFound,
-            bool skipComments = false)
+        public static List<ParsedProperty> ParseJsonPathsStr(string json, out int pos, out bool errorFound, bool skipComments = false)
         {
             _skipComments = skipComments;
             _jsonText = json;
@@ -291,7 +290,9 @@ namespace KineticValidator
 
                     pos = GetPropertyDivider(pos, currentPath);
                     if (_errorFound)
+                    {
                         return pos;
+                    }
 
                     if (_jsonText[pos] == ',' || _jsonText[pos] == ']') // it's a list of values
                     {
@@ -314,7 +315,9 @@ namespace KineticValidator
                     var valueStartPosition = pos;
                     pos = GetPropertyValue(pos, currentPath);
                     if (_errorFound)
+                    {
                         return pos;
+                    }
 
                     if (string.IsNullOrEmpty(currentPath))
                     {
@@ -334,7 +337,9 @@ namespace KineticValidator
                             newElement.Value = "";
                             newElement.EndPosition = pos = GetObject(pos, currentPath, false);
                             if (_errorFound)
+                            {
                                 return pos;
+                            }
 
                             return pos;
                         //it's an array
@@ -343,7 +348,9 @@ namespace KineticValidator
                             newElement.Value = "";
                             newElement.EndPosition = pos = GetArray(pos, currentPath);
                             if (_errorFound)
+                            {
                                 return pos;
+                            }
                             return pos;
                         // it's a property
                         default:
@@ -539,11 +546,15 @@ namespace KineticValidator
             for (; pos < _jsonText.Length; pos++)
             {
                 if (_errorFound)
+                {
                     return pos;
-
+                }
+				
                 pos = FindStartOfNextToken(pos, out var foundObjectType);
                 if (_errorFound)
+                {
                     return pos;
+                }
 
                 switch (foundObjectType)
                 {
@@ -596,11 +607,15 @@ namespace KineticValidator
             for (; pos < _jsonText.Length; pos++)
             {
                 if (_errorFound)
+                {
                     return pos;
+                }
 
                 pos = FindStartOfNextToken(pos, out var foundObjectType);
                 if (_errorFound)
+                {
                     return pos;
+                }
 
                 switch (foundObjectType)
                 {
