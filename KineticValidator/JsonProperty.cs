@@ -50,14 +50,39 @@ namespace KineticValidator
         [DataMember] public int StartPosition; // property beginning byte # in the original file
         [DataMember] public int EndPosition; // property ending byte # in the original file
 
+        [DataMember] public string _patchedValue = null; // property value
+        public string PatchedValue // parent object path
+        {
+            get
+            {
+                if (_patchedValue == null)
+                {
+                    return Value;
+                }
+
+                return _patchedValue;
+            }
+            set
+            {
+                _patchedValue = value;
+            }
+        }
+
+
+        [DataMember] public string _parentPath = null; // property value
         public string ParentPath // parent object path
         {
             get
             {
-                var parentPath = "";
-                if (!string.IsNullOrEmpty(JsonPath) && JsonPath.Contains("."))
-                    parentPath = JsonPath.Substring(0, JsonPath.LastIndexOf('.'));
-                return parentPath;
+                if (_parentPath == null)
+                {
+                    if (!string.IsNullOrEmpty(JsonPath) && JsonPath.Contains("."))
+                        _parentPath = JsonPath.Substring(0, JsonPath.LastIndexOf('.'));
+                    else
+                        _parentPath = "";
+                }
+
+                return _parentPath;
             }
         }
 

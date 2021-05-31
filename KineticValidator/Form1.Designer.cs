@@ -48,8 +48,6 @@ namespace KineticValidator
             this.button_selectAssemblyFolder = new System.Windows.Forms.Button();
             this.button_SelectProject = new System.Windows.Forms.Button();
             this.textBox_logText = new System.Windows.Forms.TextBox();
-            this.statusStrip1 = new System.Windows.Forms.StatusStrip();
-            this.toolStripStatusLabel1 = new System.Windows.Forms.ToolStripStatusLabel();
             this.tabPage_Report = new System.Windows.Forms.TabPage();
             this.dataGridView_report = new System.Windows.Forms.DataGridView();
             this.contextMenuStrip1 = new System.Windows.Forms.ContextMenuStrip(this.components);
@@ -62,7 +60,6 @@ namespace KineticValidator
             this.splitContainer1.Panel1.SuspendLayout();
             this.splitContainer1.Panel2.SuspendLayout();
             this.splitContainer1.SuspendLayout();
-            this.statusStrip1.SuspendLayout();
             this.tabPage_Report.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.dataGridView_report)).BeginInit();
             this.contextMenuStrip1.SuspendLayout();
@@ -82,7 +79,6 @@ namespace KineticValidator
             // tabPage_DataCollection
             // 
             this.tabPage_DataCollection.Controls.Add(this.splitContainer1);
-            this.tabPage_DataCollection.Controls.Add(this.statusStrip1);
             this.tabPage_DataCollection.Location = new System.Drawing.Point(4, 22);
             this.tabPage_DataCollection.Name = "tabPage_DataCollection";
             this.tabPage_DataCollection.Padding = new System.Windows.Forms.Padding(3);
@@ -116,36 +112,36 @@ namespace KineticValidator
             // splitContainer1.Panel2
             // 
             this.splitContainer1.Panel2.Controls.Add(this.textBox_logText);
-            this.splitContainer1.Size = new System.Drawing.Size(786, 396);
-            this.splitContainer1.SplitterDistance = 346;
+            this.splitContainer1.Size = new System.Drawing.Size(786, 418);
+            this.splitContainer1.SplitterDistance = 244;
             this.splitContainer1.TabIndex = 1;
             // 
             // checkBox_vsCode
             // 
             this.checkBox_vsCode.AutoSize = true;
-            this.checkBox_vsCode.Location = new System.Drawing.Point(0, 235);
+            this.checkBox_vsCode.Location = new System.Drawing.Point(1, 189);
             this.checkBox_vsCode.Name = "checkBox_vsCode";
-            this.checkBox_vsCode.Size = new System.Drawing.Size(117, 17);
+            this.checkBox_vsCode.Size = new System.Drawing.Size(87, 17);
             this.checkBox_vsCode.TabIndex = 7;
-            this.checkBox_vsCode.Text = "Preview in VSCode";
+            this.checkBox_vsCode.Text = "Use VSCode";
             this.checkBox_vsCode.UseVisualStyleBackColor = true;
             this.checkBox_vsCode.CheckedChanged += new System.EventHandler(this.CheckBox_vsCode_CheckedChanged);
             // 
             // checkBox_saveReport
             // 
             this.checkBox_saveReport.AutoSize = true;
-            this.checkBox_saveReport.Location = new System.Drawing.Point(1, 258);
+            this.checkBox_saveReport.Location = new System.Drawing.Point(1, 235);
             this.checkBox_saveReport.Name = "checkBox_saveReport";
-            this.checkBox_saveReport.Size = new System.Drawing.Size(81, 17);
+            this.checkBox_saveReport.Size = new System.Drawing.Size(112, 17);
             this.checkBox_saveReport.TabIndex = 6;
-            this.checkBox_saveReport.Text = "Save report";
+            this.checkBox_saveReport.Text = "Save JSON report";
             this.checkBox_saveReport.UseVisualStyleBackColor = true;
             this.checkBox_saveReport.CheckedChanged += new System.EventHandler(this.CheckBox_saveReport_CheckedChanged);
             // 
             // checkBox_saveFiles
             // 
             this.checkBox_saveFiles.AutoSize = true;
-            this.checkBox_saveFiles.Location = new System.Drawing.Point(1, 281);
+            this.checkBox_saveFiles.Location = new System.Drawing.Point(1, 258);
             this.checkBox_saveFiles.Name = "checkBox_saveFiles";
             this.checkBox_saveFiles.Size = new System.Drawing.Size(96, 17);
             this.checkBox_saveFiles.TabIndex = 5;
@@ -159,7 +155,7 @@ namespace KineticValidator
             | System.Windows.Forms.AnchorStyles.Right)));
             this.button_validateAll.Location = new System.Drawing.Point(1, 91);
             this.button_validateAll.Name = "button_validateAll";
-            this.button_validateAll.Size = new System.Drawing.Size(343, 23);
+            this.button_validateAll.Size = new System.Drawing.Size(241, 23);
             this.button_validateAll.TabIndex = 4;
             this.button_validateAll.Text = "Validate projects in folder";
             this.button_validateAll.UseVisualStyleBackColor = true;
@@ -168,7 +164,7 @@ namespace KineticValidator
             // checkBox_showPreview
             // 
             this.checkBox_showPreview.AutoSize = true;
-            this.checkBox_showPreview.Location = new System.Drawing.Point(1, 212);
+            this.checkBox_showPreview.Location = new System.Drawing.Point(1, 166);
             this.checkBox_showPreview.Name = "checkBox_showPreview";
             this.checkBox_showPreview.Size = new System.Drawing.Size(93, 17);
             this.checkBox_showPreview.TabIndex = 3;
@@ -183,9 +179,9 @@ namespace KineticValidator
             | System.Windows.Forms.AnchorStyles.Right)));
             this.checkedListBox_validators.CheckOnClick = true;
             this.checkedListBox_validators.FormattingEnabled = true;
-            this.checkedListBox_validators.Location = new System.Drawing.Point(0, 311);
+            this.checkedListBox_validators.Location = new System.Drawing.Point(-3, 312);
             this.checkedListBox_validators.Name = "checkedListBox_validators";
-            this.checkedListBox_validators.Size = new System.Drawing.Size(343, 79);
+            this.checkedListBox_validators.Size = new System.Drawing.Size(245, 109);
             this.checkedListBox_validators.TabIndex = 2;
             this.checkedListBox_validators.ItemCheck += new System.Windows.Forms.ItemCheckEventHandler(this.CheckedListBox_validators_ItemCheck);
             this.checkedListBox_validators.Leave += new System.EventHandler(this.CheckedListBox_validators_Leave);
@@ -193,7 +189,7 @@ namespace KineticValidator
             // checkBox_reformatJson
             // 
             this.checkBox_reformatJson.AutoSize = true;
-            this.checkBox_reformatJson.Location = new System.Drawing.Point(1, 189);
+            this.checkBox_reformatJson.Location = new System.Drawing.Point(1, 212);
             this.checkBox_reformatJson.Name = "checkBox_reformatJson";
             this.checkBox_reformatJson.Size = new System.Drawing.Size(100, 17);
             this.checkBox_reformatJson.TabIndex = 1;
@@ -204,7 +200,7 @@ namespace KineticValidator
             // checkBox_skipSchemaProblems
             // 
             this.checkBox_skipSchemaProblems.AutoSize = true;
-            this.checkBox_skipSchemaProblems.Location = new System.Drawing.Point(1, 166);
+            this.checkBox_skipSchemaProblems.Location = new System.Drawing.Point(1, 143);
             this.checkBox_skipSchemaProblems.Name = "checkBox_skipSchemaProblems";
             this.checkBox_skipSchemaProblems.Size = new System.Drawing.Size(162, 17);
             this.checkBox_skipSchemaProblems.TabIndex = 1;
@@ -215,7 +211,7 @@ namespace KineticValidator
             // checkBox_alwaysOnTop
             // 
             this.checkBox_alwaysOnTop.AutoSize = true;
-            this.checkBox_alwaysOnTop.Location = new System.Drawing.Point(1, 143);
+            this.checkBox_alwaysOnTop.Location = new System.Drawing.Point(1, 281);
             this.checkBox_alwaysOnTop.Name = "checkBox_alwaysOnTop";
             this.checkBox_alwaysOnTop.Size = new System.Drawing.Size(92, 17);
             this.checkBox_alwaysOnTop.TabIndex = 1;
@@ -241,7 +237,7 @@ namespace KineticValidator
             this.button_validateProject.Enabled = false;
             this.button_validateProject.Location = new System.Drawing.Point(1, 61);
             this.button_validateProject.Name = "button_validateProject";
-            this.button_validateProject.Size = new System.Drawing.Size(343, 23);
+            this.button_validateProject.Size = new System.Drawing.Size(241, 23);
             this.button_validateProject.TabIndex = 0;
             this.button_validateProject.Text = "Validate project";
             this.button_validateProject.UseVisualStyleBackColor = true;
@@ -253,7 +249,7 @@ namespace KineticValidator
             | System.Windows.Forms.AnchorStyles.Right)));
             this.button_selectAssemblyFolder.Location = new System.Drawing.Point(1, 3);
             this.button_selectAssemblyFolder.Name = "button_selectAssemblyFolder";
-            this.button_selectAssemblyFolder.Size = new System.Drawing.Size(343, 23);
+            this.button_selectAssemblyFolder.Size = new System.Drawing.Size(241, 23);
             this.button_selectAssemblyFolder.TabIndex = 0;
             this.button_selectAssemblyFolder.Text = "Select assembly folder";
             this.button_selectAssemblyFolder.UseVisualStyleBackColor = true;
@@ -265,9 +261,9 @@ namespace KineticValidator
             | System.Windows.Forms.AnchorStyles.Right)));
             this.button_SelectProject.Location = new System.Drawing.Point(1, 32);
             this.button_SelectProject.Name = "button_SelectProject";
-            this.button_SelectProject.Size = new System.Drawing.Size(343, 23);
+            this.button_SelectProject.Size = new System.Drawing.Size(241, 23);
             this.button_SelectProject.TabIndex = 0;
-            this.button_SelectProject.Text = "Select project";
+            this.button_SelectProject.Text = "Select project folder";
             this.button_SelectProject.UseVisualStyleBackColor = true;
             this.button_SelectProject.Click += new System.EventHandler(this.Button_selectFiles_Click);
             // 
@@ -278,23 +274,8 @@ namespace KineticValidator
             this.textBox_logText.Multiline = true;
             this.textBox_logText.Name = "textBox_logText";
             this.textBox_logText.ScrollBars = System.Windows.Forms.ScrollBars.Both;
-            this.textBox_logText.Size = new System.Drawing.Size(436, 396);
+            this.textBox_logText.Size = new System.Drawing.Size(538, 418);
             this.textBox_logText.TabIndex = 0;
-            // 
-            // statusStrip1
-            // 
-            this.statusStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            this.toolStripStatusLabel1});
-            this.statusStrip1.Location = new System.Drawing.Point(3, 399);
-            this.statusStrip1.Name = "statusStrip1";
-            this.statusStrip1.Size = new System.Drawing.Size(786, 22);
-            this.statusStrip1.TabIndex = 0;
-            this.statusStrip1.Text = "statusStrip1";
-            // 
-            // toolStripStatusLabel1
-            // 
-            this.toolStripStatusLabel1.Name = "toolStripStatusLabel1";
-            this.toolStripStatusLabel1.Size = new System.Drawing.Size(0, 17);
             // 
             // tabPage_Report
             // 
@@ -365,15 +346,12 @@ namespace KineticValidator
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.Form1_FormClosing);
             this.tabControl1.ResumeLayout(false);
             this.tabPage_DataCollection.ResumeLayout(false);
-            this.tabPage_DataCollection.PerformLayout();
             this.splitContainer1.Panel1.ResumeLayout(false);
             this.splitContainer1.Panel1.PerformLayout();
             this.splitContainer1.Panel2.ResumeLayout(false);
             this.splitContainer1.Panel2.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer1)).EndInit();
             this.splitContainer1.ResumeLayout(false);
-            this.statusStrip1.ResumeLayout(false);
-            this.statusStrip1.PerformLayout();
             this.tabPage_Report.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)(this.dataGridView_report)).EndInit();
             this.contextMenuStrip1.ResumeLayout(false);
@@ -392,8 +370,6 @@ namespace KineticValidator
         private System.Windows.Forms.Button button_validateProject;
         private System.Windows.Forms.Button button_SelectProject;
         private System.Windows.Forms.TextBox textBox_logText;
-        private System.Windows.Forms.StatusStrip statusStrip1;
-        private System.Windows.Forms.ToolStripStatusLabel toolStripStatusLabel1;
         private System.Windows.Forms.DataGridView dataGridView_report;
         private System.Windows.Forms.FolderBrowserDialog folderBrowserDialog1;
         private System.Windows.Forms.CheckBox checkBox_skipSchemaProblems;

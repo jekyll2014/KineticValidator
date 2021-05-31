@@ -52,11 +52,10 @@ namespace KineticValidator
         private static IEnumerable<ReportItem> _deserializeFileReportsCollection;
         private static IEnumerable<ReportItem> _parseJsonObjectReportsCollection;
 
-        //only get
-        internal static Dictionary<string, Func<string, IEnumerable<ReportItem>>> ValidatorsListNoPatch =>
+        internal static Dictionary<string, Func<string, IEnumerable<ReportItem>>> ValidatorsList =>
             new Dictionary<string, Func<string, IEnumerable<ReportItem>>>
             {
-                {"File list validation", RunValidation},
+                                {"File list validation", RunValidation},
                 {"Serialization validation", DeserializeFile},
                 {"JSON parser validation", ParseJsonObject},
                 {"Schema validation", SchemaValidation},
@@ -69,12 +68,7 @@ namespace KineticValidator
                 {"Overriding patches", OverridingPatches},
                 {"Possible patches", PossiblePatchValues},
                 {"Hard-coded message strings", HardCodedStrings},
-                {"Possible strings", PossibleStringsValues}
-            };
-
-        internal static Dictionary<string, Func<string, IEnumerable<ReportItem>>> ValidatorsList =>
-            new Dictionary<string, Func<string, IEnumerable<ReportItem>>>
-            {
+                {"Possible strings", PossibleStringsValues},
                 {"Apply patches", PatchAllFields},
                 {"Empty string names", EmptyStringNames},
                 {"Empty string values", EmptyStringValues},
@@ -109,7 +103,7 @@ namespace KineticValidator
 
         //cached data
         private static Dictionary<string, string> _patchValues;
-        private static ConcurrentDictionary<string, List<ParsedProperty>> _parsedFiles;
+        private static ConcurrentDictionary<string, List<ParsedProperty>> _parsedFiles = new ConcurrentDictionary<string, List<ParsedProperty>>();
         private static volatile bool _allFieldsPatched;
 
         //global cache
@@ -127,21 +121,18 @@ namespace KineticValidator
             SeedData seedData,
             bool clearCache)
         {
-            if (processConfiguration != null)
-            {
-                _splitChar = processConfiguration.SplitChar;
-                _schemaTag = processConfiguration.SchemaTag;
-                _backupSchemaExtension = processConfiguration.BackupSchemaExtension;
-                _fileMask = processConfiguration.FileMask;
-                _fileTypes = processConfiguration.FileTypes;
-                _ignoreHttpsError = processConfiguration.IgnoreHttpsError;
-                _skipSchemaErrors = processConfiguration.SkipSchemaErrors;
-                _patchAllFields = processConfiguration.PatchAllFields;
-                _systemMacros = processConfiguration.SystemMacros;
-                _systemDataViews = processConfiguration.SystemDataViews;
-                _suppressSchemaErrors = processConfiguration.SuppressSchemaErrors;
-                _serverAssembliesPath = processConfiguration.ServerAssembliesPath;
-            }
+            _splitChar = processConfiguration.SplitChar;
+            _schemaTag = processConfiguration.SchemaTag;
+            _backupSchemaExtension = processConfiguration.BackupSchemaExtension;
+            _fileMask = processConfiguration.FileMask;
+            _fileTypes = processConfiguration.FileTypes;
+            _ignoreHttpsError = processConfiguration.IgnoreHttpsError;
+            _skipSchemaErrors = processConfiguration.SkipSchemaErrors;
+            _patchAllFields = processConfiguration.PatchAllFields;
+            _systemMacros = processConfiguration.SystemMacros;
+            _systemDataViews = processConfiguration.SystemDataViews;
+            _suppressSchemaErrors = processConfiguration.SuppressSchemaErrors;
+            _serverAssembliesPath = processConfiguration.ServerAssembliesPath;
 
             if (projectConfiguration != null)
             {
@@ -524,7 +515,7 @@ namespace KineticValidator
                 }
                 else
                 {
-                    report.AddRange(errorList.Select(schemaError => new ReportItem
+                    var newReportList = errorList?.Select(schemaError => new ReportItem
                     {
                         ProjectName = projectName,
                         FullFileName = fullFileName,
@@ -535,7 +526,9 @@ namespace KineticValidator
                         ValidationType = ValidationTypeEnum.Scheme.ToString(),
                         Severity = ImportanceEnum.Error.ToString(),
                         Source = "ValidateFileSchema"
-                    }));
+                    });
+                    if (newReportList != null && newReportList.Any())
+                        report.AddRange(newReportList);
                 }
             }
 
@@ -894,9 +887,9 @@ namespace KineticValidator
             var report = new BlockingCollection<ReportItem>();
             Parallel.ForEach(_processedFilesList, file =>
             {
-                var reportSet = ValidateFileSchema(_projectName, file.Key, file.Value);
+                var reportSet = ValidateFileSchema(_projectName, file.Key, file.Value).Result;
 
-                foreach (var item in reportSet.Result)
+                foreach (var item in reportSet)
                     report.Add(item);
             });
 
@@ -907,20 +900,24 @@ namespace KineticValidator
         {
             // collect full list of files inside the project folder (not including shared)
             var fullFilesList = new List<string>();
-            fullFilesList.AddRange(Directory.GetFiles(_projectPath, _fileMask, SearchOption.AllDirectories));
+            var foundFiles = Directory.GetFiles(_projectPath, _fileMask, SearchOption.AllDirectories);
+            if (foundFiles != null)
+                fullFilesList.AddRange(foundFiles);
 
-            return (from file in fullFilesList
-                    where file.IndexOf(_projectPath + "\\views\\", StringComparison.OrdinalIgnoreCase) < 0
-                    where !_processedFilesList.ContainsKey(file) && !Utilities.IsShared(file, _projectPath)
-                    select new ReportItem
-                    {
-                        ProjectName = _projectName,
-                        FullFileName = file,
-                        Message = "File is not used in the project",
-                        ValidationType = ValidationTypeEnum.Logic.ToString(),
-                        Severity = ImportanceEnum.Note.ToString(),
-                        Source = methodName
-                    }).ToList();
+            var report = (from file in fullFilesList
+                          where file.IndexOf(_projectPath + "\\views\\", StringComparison.OrdinalIgnoreCase) < 0
+                          where !_processedFilesList.ContainsKey(file) && !Utilities.IsShared(file, _projectPath)
+                          select new ReportItem
+                          {
+                              ProjectName = _projectName,
+                              FullFileName = file,
+                              Message = "File is not used in the project",
+                              ValidationType = ValidationTypeEnum.Logic.ToString(),
+                              Severity = ImportanceEnum.Note.ToString(),
+                              Source = methodName
+                          }).ToList() ?? new List<ReportItem>();
+
+            return report;
         }
 
         private static IEnumerable<ReportItem> ValidateFileChars(string methodName)
@@ -1360,7 +1357,7 @@ namespace KineticValidator
             if (valuesList.Any())
                 foreach (var item in valuesList)
                     foreach (var patch in _patchValues)
-                        item.Value = item.Value.Replace(patch.Key, patch.Value);
+                        item.PatchedValue = item.Value.Replace(patch.Key, patch.Value);
 
             _allFieldsPatched = true;
 
