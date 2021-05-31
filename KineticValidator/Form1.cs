@@ -1887,7 +1887,7 @@ namespace KineticValidator
             startPos = -1;
             endPos = -1;
 
-            var pathList = ParseJsonPathsStr(json.Replace(' ', ' '), true);
+            var pathList = ParseJsonToPathList(json.Replace(' ', ' '), out var _, "", '.', true);
 
             var pathItems = pathList.Where(n => n.Path == path).ToArray();
             if (!pathItems.Any())

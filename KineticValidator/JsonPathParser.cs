@@ -44,62 +44,70 @@ namespace KineticValidator
         }
 
         private static string _jsonText = "";
+        private static string _rootName = "root";
+        private static char _pathDivider = '.';
         private static List<ParsedProperty> _pathIndex = new List<ParsedProperty>();
 
         private static readonly char[] EscapeChars = { '\"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u' };
-        private static readonly char[] TokenOrNumber = "-0123456789.truefalsenull".ToCharArray().ToArray();
+        private static readonly char[] TokenOrNumber = "-0123456789.truefalsenull".ToCharArray();
 
         private static bool _skipComments;
         private static bool _errorFound;
 
-        public static List<ParsedProperty> ParseJsonPathsStr(string json, out int pos, out bool errorFound, bool skipComments = false)
+        public static IEnumerable<ParsedProperty> ParseJsonToPathList(string json, out int endPosition, string rootName = "root", char pathDivider = '.', bool skipComments = false)
         {
+            _rootName = rootName;
+            _pathDivider = pathDivider;
             _skipComments = skipComments;
             _jsonText = json;
-            pos = 0;
+            endPosition = 0;
             _errorFound = false;
+            _pathIndex = new List<ParsedProperty>();
 
             if (string.IsNullOrEmpty(json))
             {
-                errorFound = false;
                 return _pathIndex;
             }
 
-            const string currentPath = "";
-            _pathIndex = new List<ParsedProperty>();
-            while (!_errorFound && pos < _jsonText.Length)
+            var currentPath = _rootName;
+            while (!_errorFound && endPosition < _jsonText.Length)
             {
-                pos = FindStartOfNextToken(pos, out var foundObjectType);
-                if (_errorFound || pos >= _jsonText.Length)
+                endPosition = FindStartOfNextToken(endPosition, out var foundObjectType);
+                if (_errorFound || endPosition >= _jsonText.Length)
                     break;
 
                 switch (foundObjectType)
                 {
+                    case PropertyType.Property:
+                        endPosition = GetPropertyName(endPosition, currentPath);
+                        break;
                     case PropertyType.Comment:
-                        pos = GetComment(pos, currentPath);
+                        endPosition = GetComment(endPosition, currentPath);
                         break;
                     case PropertyType.Object:
-                        pos = GetObject(pos, currentPath);
+                        endPosition = GetObject(endPosition, currentPath);
                         break;
                     case PropertyType.EndOfObject:
+                        break;
+                    case PropertyType.Array:
+                        endPosition = GetArray(endPosition, currentPath);
+                        break;
+                    case PropertyType.EndOfArray:
                         break;
                     default:
                         _errorFound = true;
                         break;
                 }
 
-                pos++;
+                endPosition++;
             }
 
-            errorFound = _errorFound;
             return _pathIndex;
         }
 
-        public static List<ParsedProperty> ParseJsonPathsStr(string json, bool skipComments = false)
+        public static IEnumerable<ParsedProperty> ParseJsonToPathList(string json)
         {
-            ParseJsonPathsStr(json, out var _, out var _, skipComments);
-
-            return _pathIndex;
+            return ParseJsonToPathList(json, out var _);
         }
 
         private static int FindStartOfNextToken(int pos, out PropertyType foundObjectType)
@@ -125,26 +133,29 @@ namespace KineticValidator
                     case '}':
                         foundObjectType = PropertyType.EndOfObject;
                         return pos;
+                    case '[':
+                        foundObjectType = PropertyType.Array;
+                        return pos;
                     case ']':
                         foundObjectType = PropertyType.EndOfArray;
                         return pos;
                     default:
-                    {
-                        if (tokenOrNumber.Contains(currentChar))
                         {
-                            foundObjectType = PropertyType.TokenOrNumber;
-                            return pos;
-                        }
+                            if (tokenOrNumber.Contains(currentChar))
+                            {
+                                foundObjectType = PropertyType.TokenOrNumber;
+                                return pos;
+                            }
 
-                        if (!allowedChars.Contains(currentChar))
-                        {
-                            foundObjectType = PropertyType.Error;
-                            _errorFound = true;
-                            return pos;
-                        }
+                            if (!allowedChars.Contains(currentChar))
+                            {
+                                foundObjectType = PropertyType.Error;
+                                _errorFound = true;
+                                return pos;
+                            }
 
-                        break;
-                    }
+                            break;
+                        }
                 }
             }
 
@@ -177,64 +188,64 @@ namespace KineticValidator
             {
                 //single line comment
                 case '/':
-                {
-                    pos++;
-                    if (pos >= _jsonText.Length)
                     {
-                        _errorFound = true;
-                        return pos;
-                    }
-
-                    for (; pos < _jsonText.Length; pos++)
-                    {
-                        if (_jsonText[pos] == '\r' || _jsonText[pos] == '\n') //end of comment
+                        pos++;
+                        if (pos >= _jsonText.Length)
                         {
-                            pos--;
-                            newElement.EndPosition = pos;
-                            newElement.Value = _jsonText.Substring(newElement.StartPosition,
-                                newElement.EndPosition - newElement.StartPosition + 1);
+                            _errorFound = true;
                             return pos;
                         }
-                    }
 
-                    return pos;
-                }
-                //multi line comment
-                case '*':
-                {
-                    pos++;
-                    if (pos >= _jsonText.Length)
-                    {
-                        _errorFound = true;
-                        return pos;
-                    }
-
-                    for (; pos < _jsonText.Length; pos++)
-                    {
-                        if (_jsonText[pos] == '*') // possible end of comment
+                        for (; pos < _jsonText.Length; pos++)
                         {
-                            pos++;
-                            if (pos >= _jsonText.Length)
+                            if (_jsonText[pos] == '\r' || _jsonText[pos] == '\n') //end of comment
                             {
-                                _errorFound = true;
-                                return pos;
-                            }
-
-                            if (_jsonText[pos] == '/')
-                            {
+                                pos--;
                                 newElement.EndPosition = pos;
-                                newElement.Value = _jsonText.Substring(
-                                    newElement.StartPosition,
+                                newElement.Value = _jsonText.Substring(newElement.StartPosition,
                                     newElement.EndPosition - newElement.StartPosition + 1);
                                 return pos;
                             }
-
-                            pos--;
                         }
-                    }
 
-                    break;
-                }
+                        return pos;
+                    }
+                //multi line comment
+                case '*':
+                    {
+                        pos++;
+                        if (pos >= _jsonText.Length)
+                        {
+                            _errorFound = true;
+                            return pos;
+                        }
+
+                        for (; pos < _jsonText.Length; pos++)
+                        {
+                            if (_jsonText[pos] == '*') // possible end of comment
+                            {
+                                pos++;
+                                if (pos >= _jsonText.Length)
+                                {
+                                    _errorFound = true;
+                                    return pos;
+                                }
+
+                                if (_jsonText[pos] == '/')
+                                {
+                                    newElement.EndPosition = pos;
+                                    newElement.Value = _jsonText.Substring(
+                                        newElement.StartPosition,
+                                        newElement.EndPosition - newElement.StartPosition + 1);
+                                    return pos;
+                                }
+
+                                pos--;
+                            }
+                        }
+
+                        break;
+                    }
             }
 
             _errorFound = true;
@@ -319,15 +330,7 @@ namespace KineticValidator
                         return pos;
                     }
 
-                    if (string.IsNullOrEmpty(currentPath))
-                    {
-                        currentPath = newElement.Name;
-                    }
-                    else
-                    {
-                        currentPath += "." + newElement.Name;
-                    }
-
+                    currentPath += _pathDivider + newElement.Name;
                     newElement.Path = currentPath;
                     switch (_jsonText[pos])
                     {
@@ -336,21 +339,12 @@ namespace KineticValidator
                             newElement.Type = PropertyType.Object;
                             newElement.Value = "";
                             newElement.EndPosition = pos = GetObject(pos, currentPath, false);
-                            if (_errorFound)
-                            {
-                                return pos;
-                            }
-
                             return pos;
                         //it's an array
                         case '[':
                             newElement.Type = PropertyType.Array;
                             newElement.Value = "";
                             newElement.EndPosition = pos = GetArray(pos, currentPath);
-                            if (_errorFound)
-                            {
-                                return pos;
-                            }
                             return pos;
                         // it's a property
                         default:
@@ -470,46 +464,46 @@ namespace KineticValidator
                         break;
                     //it's a start of value string 
                     case '\"':
-                    {
-                        pos++;
-                        var incorrectChars = new List<char> { '\r', '\n' }; // to be added
-
-                        for (; pos < _jsonText.Length; pos++)
                         {
-                            if (_jsonText[pos] == '\\') //skip escape chars
-                            {
-                                pos++;
-                                if (pos >= _jsonText.Length)
-                                {
-                                    _errorFound = true;
-                                    return pos;
-                                }
+                            pos++;
+                            var incorrectChars = new List<char> { '\r', '\n' }; // to be added
 
-                                if (EscapeChars.Contains(_jsonText[pos])) // if \u0000
+                            for (; pos < _jsonText.Length; pos++)
+                            {
+                                if (_jsonText[pos] == '\\') //skip escape chars
                                 {
-                                    if (_jsonText[pos] == 'u')
-                                        pos += 4;
+                                    pos++;
+                                    if (pos >= _jsonText.Length)
+                                    {
+                                        _errorFound = true;
+                                        return pos;
+                                    }
+
+                                    if (EscapeChars.Contains(_jsonText[pos])) // if \u0000
+                                    {
+                                        if (_jsonText[pos] == 'u')
+                                            pos += 4;
+                                    }
+                                    else
+                                    {
+                                        _errorFound = true;
+                                        return pos;
+                                    }
                                 }
-                                else
+                                else if (_jsonText[pos] == '\"')
+                                {
+                                    return pos;
+                                }
+                                else if (incorrectChars.Contains(_jsonText[pos])) // check restricted chars
                                 {
                                     _errorFound = true;
                                     return pos;
                                 }
                             }
-                            else if (_jsonText[pos] == '\"')
-                            {
-                                return pos;
-                            }
-                            else if (incorrectChars.Contains(_jsonText[pos])) // check restricted chars
-                            {
-                                _errorFound = true;
-                                return pos;
-                            }
+
+                            _errorFound = true;
+                            return pos;
                         }
-
-                        _errorFound = true;
-                        return pos;
-                    }
                     default:
                         if (!allowedChars.Contains(_jsonText[pos])) // it's a property non-string value
                         {
