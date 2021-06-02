@@ -668,7 +668,7 @@ namespace KineticValidator
                     return list;
                 }
 
-                list = ParseJsonToPathList(json.Replace(' ', ' '), out var _, "", '.', true).ToList();
+                list = ParseJsonToPathList(json.Replace(' ', ' '), out var _, out var _, "", '.', false).ToList();
                 _parsedFiles.TryAdd(file, list);
             }
             else
