@@ -13,7 +13,7 @@ namespace ScintillaNETviewer.Utils
 
         public static string LastSearch = "";
 
-        private static int LastSearchIndex;
+        private static int _lastSearchIndex;
 
         public static void Find(bool next, bool incremental)
         {
@@ -27,8 +27,8 @@ namespace ScintillaNETviewer.Utils
                     // SEARCH FOR THE NEXT OCCURANCE
 
                     // Search the document at the last search index
-                    TextArea.TargetStart = LastSearchIndex - 1;
-                    TextArea.TargetEnd = LastSearchIndex + LastSearch.Length + 1;
+                    TextArea.TargetStart = _lastSearchIndex - 1;
+                    TextArea.TargetEnd = _lastSearchIndex + LastSearch.Length + 1;
                     TextArea.SearchFlags = SearchFlags.None;
 
                     // Search, and if not found..
@@ -83,7 +83,7 @@ namespace ScintillaNETviewer.Utils
                 }
 
                 // Select the occurance
-                LastSearchIndex = TextArea.TargetStart;
+                _lastSearchIndex = TextArea.TargetStart;
                 TextArea.SetSelection(TextArea.TargetEnd, TextArea.TargetStart);
                 TextArea.ScrollCaret();
             }

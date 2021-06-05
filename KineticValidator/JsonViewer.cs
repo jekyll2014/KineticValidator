@@ -56,7 +56,7 @@ namespace KineticValidator
         private string _fileName = "";
         public bool SingleLineBrackets = false;
         private bool _multipleSearchActive;
-        private bool _textChanged = false;
+        private bool _textChanged;
 
         public string EditorText
         {
@@ -388,7 +388,7 @@ namespace KineticValidator
             {
                 fileContent = File.ReadAllText(fullFileName);
             }
-            catch (Exception Ex)
+            catch (Exception)
             {
 
             }
@@ -424,7 +424,7 @@ namespace KineticValidator
             {
                 fileContent = File.ReadAllText(fullFileName);
             }
-            catch (Exception Ex)
+            catch (Exception)
             {
 
             }
@@ -474,7 +474,7 @@ namespace KineticValidator
 
                 File.WriteAllText(fullFileName, _textArea.Text);
             }
-            catch (Exception Ex)
+            catch (Exception)
             {
                 return false;
             }

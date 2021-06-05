@@ -8,7 +8,7 @@ namespace KineticValidator
 {
     [DataContract]
     [Serializable]
-    public enum JsoncContentType
+    public enum KineticContentType
     {
         [EnumMember] Unknown,
         [EnumMember] DataViews,
@@ -38,7 +38,7 @@ namespace KineticValidator
         [DataMember] public int JsonDepth; // depth in the original JSON structure
         [DataMember] public string Name; // property name
         [DataMember] public string Value; // property value
-        [DataMember] public JsoncContentType FileType; // file type (event, string, rules, ...)
+        [DataMember] public KineticContentType FileType; // file type (event, string, rules, ...)
         [DataMember] public string Version; // schema version declared in the beginning of the file
 
         [DataMember]
@@ -50,26 +50,18 @@ namespace KineticValidator
         [DataMember] public int StartPosition; // property beginning byte # in the original file
         [DataMember] public int EndPosition; // property ending byte # in the original file
 
-        [DataMember] public string _patchedValue = null; // property value
+        [DataMember] private string _patchedValue; // property value
         public string PatchedValue // parent object path
         {
             get
             {
-                if (_patchedValue == null)
-                {
-                    return Value;
-                }
-
-                return _patchedValue;
+                return _patchedValue ?? Value;
             }
-            set
-            {
-                _patchedValue = value;
-            }
+            set => _patchedValue = value;
         }
 
 
-        [DataMember] public string _parentPath = null; // property value
+        [DataMember] private string _parentPath; // property value
         public string ParentPath // parent object path
         {
             get
@@ -93,7 +85,7 @@ namespace KineticValidator
             JsonDepth = 0;
             Name = "";
             Value = "";
-            FileType = JsoncContentType.Unknown;
+            FileType = KineticContentType.Unknown;
             Version = "";
             ItemType = JsonItemType.Unknown;
             Parent = "";

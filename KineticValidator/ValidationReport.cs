@@ -77,7 +77,7 @@ namespace KineticValidator
         {
             ProjectName = "";
             FullFileName = "";
-            FileType = JsoncContentType.Unknown.ToString();
+            FileType = KineticContentType.Unknown.ToString();
             Message = "";
             LineId = "";
             LineNumber = "";

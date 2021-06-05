@@ -67,55 +67,55 @@ namespace KineticValidator
             {
                 FileTypeMask = "dataviews.jsonc",
                 PropertyTypeName = "dataviews",
-                FileType = JsoncContentType.DataViews
+                FileType = KineticContentType.DataViews
             },
             new ContentTypeItem
             {
                 FileTypeMask = "events.jsonc",
                 PropertyTypeName = "events",
-                FileType = JsoncContentType.Events
+                FileType = KineticContentType.Events
             },
             new ContentTypeItem
             {
                 FileTypeMask = "layout.jsonc",
                 PropertyTypeName = "layout",
-                FileType = JsoncContentType.Layout
+                FileType = KineticContentType.Layout
             },
             new ContentTypeItem
             {
                 FileTypeMask = "rules.jsonc",
                 PropertyTypeName = "rules",
-                FileType = JsoncContentType.Rules
+                FileType = KineticContentType.Rules
             },
             new ContentTypeItem
             {
                 FileTypeMask = "search.jsonc",
                 PropertyTypeName = "search",
-                FileType = JsoncContentType.Search
+                FileType = KineticContentType.Search
             },
             new ContentTypeItem
             {
                 FileTypeMask = "combo.jsonc",
                 PropertyTypeName = "combo",
-                FileType = JsoncContentType.Combo
+                FileType = KineticContentType.Combo
             },
             new ContentTypeItem
             {
                 FileTypeMask = "tools.jsonc",
                 PropertyTypeName = "tools",
-                FileType = JsoncContentType.Tools
+                FileType = KineticContentType.Tools
             },
             new ContentTypeItem
             {
                 FileTypeMask = "strings.jsonc",
                 PropertyTypeName = "strings",
-                FileType = JsoncContentType.Strings
+                FileType = KineticContentType.Strings
             },
             new ContentTypeItem
             {
                 FileTypeMask = "patch.jsonc",
                 PropertyTypeName = "patch",
-                FileType = JsoncContentType.Patch
+                FileType = KineticContentType.Patch
             }
         };
 
@@ -233,7 +233,7 @@ namespace KineticValidator
             if (!(winX == 0 && winY == 0 && winW == 0 && winH == 0))
             {
                 Location = new Point
-                { X = winX, Y = winY };
+                    { X = winX, Y = winY };
                 Width = winW;
                 Height = winH;
             }
@@ -549,9 +549,9 @@ namespace KineticValidator
                         continue;
 
                     if (_showPreview && _editors[i] != null
-                        && !_editors[i].IsDisposed
-                        && (_editors[i].SingleLineBrackets != false
-                            || !_editors[i].Text.EndsWith(fileTypes[i])))
+                                     && !_editors[i].IsDisposed
+                                     && (_editors[i].SingleLineBrackets
+                                         || !_editors[i].Text.EndsWith(fileTypes[i])))
                     {
                         _editors[i].SingleLineBrackets = false;
                         _editors[i].LoadTextFromFile(fileTypes[i]);
@@ -607,9 +607,9 @@ namespace KineticValidator
                         continue;
 
                     if (_showPreview && _editors[i] != null
-                        && !_editors[i].IsDisposed
-                        && (_editors[i].SingleLineBrackets != _reformatJson
-                            || !_editors[i].Text.EndsWith(files[i])))
+                                     && !_editors[i].IsDisposed
+                                     && (_editors[i].SingleLineBrackets != _reformatJson
+                                         || !_editors[i].Text.EndsWith(files[i])))
                     {
                         _editors[i].SingleLineBrackets = _reformatJson;
                         _editors[i].LoadJsonFromFile(files[i]);
@@ -871,7 +871,6 @@ namespace KineticValidator
 
         private IEnumerable<ReportItem> RunValidation(bool fullInit, bool saveFile = true)
         {
-            var startTime = DateTime.Now;
             _textLog.Append($"Validating {_projectName}... ");
             FlushLog();
 
@@ -1068,7 +1067,7 @@ namespace KineticValidator
 
         private void DeserializeFile(
             string fullFileName,
-            JsoncContentType fileType,
+            KineticContentType fileType,
             BlockingCollection<JsonProperty> rootCollection,
             ConcurrentDictionary<string, string> processedList,
             int jsonDepth,
@@ -1128,12 +1127,12 @@ namespace KineticValidator
                 jsonObject = JsonConvert.DeserializeObject(jsonStr, jsonSettings);*/
 
                 jsonObject = JObject.Parse(jsonStr,
-                new JsonLoadSettings
-                {
-                    CommentHandling = CommentHandling.Load,
-                    LineInfoHandling = LineInfoHandling.Load,
-                    DuplicatePropertyNameHandling = DuplicatePropertyNameHandling.Error
-                });
+                    new JsonLoadSettings
+                    {
+                        CommentHandling = CommentHandling.Load,
+                        LineInfoHandling = LineInfoHandling.Load,
+                        DuplicatePropertyNameHandling = DuplicatePropertyNameHandling.Error
+                    });
             }
             catch (Exception ex)
             {
@@ -1153,24 +1152,23 @@ namespace KineticValidator
 
             var ver = "";
             var shared = Utilities.IsShared(fullFileName, _projectPath);
-            if (jsonObject != null && jsonObject is JToken)
-                ParseJsonObject(
-                    jsonObject,
-                    fileType,
-                    rootCollection,
-                    fullFileName,
-                    processedList,
-                    ref ver,
-                    jsonDepth,
-                    "",
-                    shared,
-                    deserializeFileReportsCollection,
-                    parseJsonObjectReportsCollection);
+            ParseJsonObject(
+                jsonObject,
+                fileType,
+                rootCollection,
+                fullFileName,
+                processedList,
+                ref ver,
+                jsonDepth,
+                "",
+                shared,
+                deserializeFileReportsCollection,
+                parseJsonObjectReportsCollection);
         }
 
         private void ParseJsonObject(
             JToken token,
-            JsoncContentType fileType,
+            KineticContentType fileType,
             BlockingCollection<JsonProperty> rootCollection,
             string fullFileName,
             ConcurrentDictionary<string, string> processedList,
@@ -1198,7 +1196,7 @@ namespace KineticValidator
                         if (arrayPath == arrayName && _fileTypes.Any(n => n.PropertyTypeName == arrayName))
                         {
                             fileType = _fileTypes
-                               .FirstOrDefault(n => n.PropertyTypeName == arrayName).FileType;
+                                .FirstOrDefault(n => n.PropertyTypeName == arrayName).FileType;
                         }
                     }
 
@@ -1208,8 +1206,7 @@ namespace KineticValidator
 
                     var lineInfo = (IJsonLineInfo)jProperty;
                     var lineNumber = -1;
-                    if (lineInfo != null)
-                        lineNumber = ((IJsonLineInfo)jProperty).LineNumber;
+                    lineNumber = ((IJsonLineInfo)jProperty).LineNumber;
 
                     if (jValue is JValue jPropertyValue)
                     {
@@ -1285,10 +1282,10 @@ namespace KineticValidator
                         }
 
                         importFileName = GetFilePath(fullFileName)
-                                          + importFileName.Replace('/', '\\');
+                                         + importFileName.Replace('/', '\\');
                         importFileName = SimplifyPath(importFileName);
                         var importFileType = GetFileTypeFromJsonPath(jsonPath);
-                        if (importFileType == JsoncContentType.Unknown)
+                        if (importFileType == KineticContentType.Unknown)
                         {
                             importFileType = Utilities.GetFileTypeFromFileName(importFileName, _fileTypes);
                         }
@@ -1331,7 +1328,7 @@ namespace KineticValidator
                             .FirstOrDefault(n => n.PropertyTypeName == name).FileType;
                         if (fileType != newFileType)
                         {
-                            if (fileType != JsoncContentType.Unknown && newFileType != JsoncContentType.Patch)
+                            if (fileType != KineticContentType.Unknown && newFileType != KineticContentType.Patch)
                             {
                                 var report = new ReportItem
                                 {
@@ -1478,7 +1475,7 @@ namespace KineticValidator
                         parseJsonObjectReportsCollection.Add(report);
                     }
                 }
-                break;
+                    break;
             }
         }
 
@@ -1560,7 +1557,7 @@ namespace KineticValidator
             foreach (var col in Enum.GetNames(typeof(ReportColumns)))
             {
                 _reportTable.Columns.Add(col);
-                var column = new DataGridViewTextBoxColumn
+                var newColumn = new DataGridViewTextBoxColumn
                 {
                     DataPropertyName = col,
                     Name = col,
@@ -1571,8 +1568,8 @@ namespace KineticValidator
                 if (col == ReportColumns.JsonPath.ToString()
                     || col == ReportColumns.Message.ToString())
                 {
-                    column.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
-                    column.Width = 50;
+                    newColumn.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+                    newColumn.Width = 50;
                 }
 
                 if ((col == ReportColumns.ProjectName.ToString() && !collection)
@@ -1580,22 +1577,23 @@ namespace KineticValidator
                     || col == ReportColumns.StartPosition.ToString()
                     || col == ReportColumns.EndPosition.ToString())
                 {
-                    column.Visible = false;
+                    newColumn.Visible = false;
                 }
 
-                dataGridView_report.Columns.Add(column);
+                dataGridView_report.Columns.Add(newColumn);
             }
 
-            dataGridView_report.DataError += delegate
-            { };
+            dataGridView_report.DataError += delegate { };
             dataGridView_report.RowHeadersVisible = false;
             dataGridView_report.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.DisplayedCells;
-            dataGridView_report.Columns[ReportColumns.Message.ToString()].Width =
-                Settings.Default.MessageColumnWidth;
-
-            // reserved for future use
-            dataGridView_report.Columns[ReportColumns.Source.ToString()].Visible = false;
-            dataGridView_report.Columns[ReportColumns.ValidationType.ToString()].Visible = false;
+            var column = dataGridView_report.Columns[ReportColumns.Message.ToString()];
+            if (column != null)
+            {
+                column.Width = Settings.Default.MessageColumnWidth;
+                // reserved for future use
+                column.Visible = false;
+                column.Visible = false;
+            }
 
             if (_showPreview)
                 dataGridView_report.SelectionChanged += DataGridView_report_SelectionChanged;
@@ -1704,11 +1702,11 @@ namespace KineticValidator
 
             if (!_runFromCmdLine)
                 Invoke((MethodInvoker)delegate
-               {
-                   textBox_logText.Text += _textLog.ToString();
-                   textBox_logText.SelectionStart = textBox_logText.Text.Length;
-                   textBox_logText.ScrollToCaret();
-               });
+                {
+                    textBox_logText.Text += _textLog.ToString();
+                    textBox_logText.SelectionStart = textBox_logText.Text.Length;
+                    textBox_logText.ScrollToCaret();
+                });
             else
                 Console.WriteLine(_textLog.ToString());
 
@@ -1721,7 +1719,7 @@ namespace KineticValidator
 
             //Project is in the \"\\Deployment\\Server\\Apps\\MetaUI\\\" folder
             if (Directory.Exists(projectPath + "\\..\\shared\\")
-                 && projectPath.Contains("\\Deployment\\Server\\Apps\\"))
+                && projectPath.Contains("\\Deployment\\Server\\Apps\\"))
             {
                 folderType = FolderType.Deployment;
             }
@@ -1746,7 +1744,7 @@ namespace KineticValidator
             return longFileName.Substring(0, i + 1);
         }
 
-        private JsoncContentType GetFileTypeFromJsonPath(string jsonPath)
+        private KineticContentType GetFileTypeFromJsonPath(string jsonPath)
         {
             var typeName = "";
 
@@ -1887,7 +1885,7 @@ namespace KineticValidator
             startPos = -1;
             endPos = -1;
 
-            var pathList = ParseJsonToPathList(json.Replace(' ', ' '), out var _, out var _,"", '.', false);
+            var pathList = ParseJsonToPathList(json.Replace(' ', ' '), out var _, out var _, "", '.', false);
 
             var pathItems = pathList.Where(n => n.Path == "." + path).ToArray();
             if (!pathItems.Any())
@@ -1900,25 +1898,21 @@ namespace KineticValidator
 
         private void VsCodeOpenFile(string command)
         {
-            ProcessStartInfo ProcessInfo;
-            Process Process;
-
-            ProcessInfo = new ProcessStartInfo("code", command);
-            ProcessInfo.CreateNoWindow = true;
-            ProcessInfo.UseShellExecute = true;
-            ProcessInfo.WindowStyle = ProcessWindowStyle.Hidden;
+            var processInfo = new ProcessStartInfo("code", command)
+            {
+                CreateNoWindow = true, UseShellExecute = true, WindowStyle = ProcessWindowStyle.Hidden
+            };
 
             try
             {
-                Process = Process.Start(ProcessInfo);
+                Process.Start(processInfo);
             }
-            catch (Exception Ex)
+            catch (Exception ex)
             {
-                textBox_logText.Text += Ex.Message;
+                textBox_logText.Text += ex.Message;
             }
         }
 
         #endregion
-
     }
 }

@@ -35,7 +35,7 @@ namespace KineticValidator
             {
                 _assembly = Assembly.LoadFile(assemblyFileName);
             }
-            catch
+            catch (Exception)
             {
             }
 
@@ -91,7 +91,7 @@ namespace KineticValidator
 
             if (_typeSafely == null) return null;
 
-            string[] methods = null;
+            string[] methods;
             try
             {
                 methods = _typeSafely.GetMethods().Select(t => t.Name).ToArray();

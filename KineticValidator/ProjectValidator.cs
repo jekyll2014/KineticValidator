@@ -526,7 +526,7 @@ namespace KineticValidator
                         ValidationType = ValidationTypeEnum.Scheme.ToString(),
                         Severity = ImportanceEnum.Error.ToString(),
                         Source = "ValidateFileSchema"
-                    });
+                    }).ToList();
                     if (newReportList != null && newReportList.Any())
                         report.AddRange(newReportList);
                 }
@@ -756,14 +756,13 @@ namespace KineticValidator
             if (KnownDataSets.ContainsKey(svcName))
             {
                 result.SvcName = svcName;
-                var dsTmp = KnownDataSets.Where(n => n.Value.ContainsKey(dataSetName));
-
                 KnownDataSets.TryGetValue(svcName, out var dataSets);
                 if (dataSets != null && dataSets.ContainsKey(dataSetName))
                 {
                     result.DataSetName = dataSetName;
                     Dictionary<string, string[]> tables = null;
                     dataSets?.TryGetValue(svcName, out tables);
+
                     if (tables != null && tables.ContainsKey(tableName))
                     {
                         result.TableName = tableName;
@@ -811,7 +810,7 @@ namespace KineticValidator
             var patchList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Patch
+                    && n.FileType == KineticContentType.Patch
                     && n.Parent == "patch"
                     && n.Name == "id");
 
@@ -821,7 +820,7 @@ namespace KineticValidator
                 var newValue = _jsonPropertiesCollection
                     .LastOrDefault(n =>
                         n.ItemType == JsonItemType.Property
-                        && n.FileType == JsoncContentType.Patch
+                        && n.FileType == KineticContentType.Patch
                         && n.FullFileName == item.FullFileName
                         && n.ParentPath == item.ParentPath
                         && n.Name == "value")
@@ -901,21 +900,20 @@ namespace KineticValidator
             // collect full list of files inside the project folder (not including shared)
             var fullFilesList = new List<string>();
             var foundFiles = Directory.GetFiles(_projectPath, _fileMask, SearchOption.AllDirectories);
-            if (foundFiles != null)
-                fullFilesList.AddRange(foundFiles);
+            fullFilesList.AddRange(foundFiles);
 
             var report = (from file in fullFilesList
-                          where file.IndexOf(_projectPath + "\\views\\", StringComparison.OrdinalIgnoreCase) < 0
-                          where !_processedFilesList.ContainsKey(file) && !Utilities.IsShared(file, _projectPath)
-                          select new ReportItem
-                          {
-                              ProjectName = _projectName,
-                              FullFileName = file,
-                              Message = "File is not used in the project",
-                              ValidationType = ValidationTypeEnum.Logic.ToString(),
-                              Severity = ImportanceEnum.Note.ToString(),
-                              Source = methodName
-                          }).ToList() ?? new List<ReportItem>();
+                where file.IndexOf(_projectPath + "\\views\\", StringComparison.OrdinalIgnoreCase) < 0
+                where !_processedFilesList.ContainsKey(file) && !Utilities.IsShared(file, _projectPath)
+                select new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = file,
+                    Message = "File is not used in the project",
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Note.ToString(),
+                    Source = methodName
+                }).ToList();
 
             return report;
         }
@@ -1061,7 +1059,7 @@ namespace KineticValidator
             var emptyPatchList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Patch
+                    && n.FileType == KineticContentType.Patch
                     && !n.Shared
                     && n.Parent == "patch"
                     && n.Name == "id"
@@ -1087,7 +1085,7 @@ namespace KineticValidator
             var patchList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Patch
+                    && n.FileType == KineticContentType.Patch
                     && !n.Shared
                     && n.Parent == "patch"
                     && n.Name == "id"
@@ -1096,7 +1094,7 @@ namespace KineticValidator
             return from patchResource in patchList
                    where !string.IsNullOrEmpty(patchResource.Value)
                    where !_jsonPropertiesCollection.Any(n =>
-                       n.ItemType == JsonItemType.Property && n.FileType != JsoncContentType.Patch &&
+                       n.ItemType == JsonItemType.Property && n.FileType != KineticContentType.Patch &&
                        n.Value.Contains("%" + patchResource.Value + "%"))
                    select new ReportItem
                    {
@@ -1118,7 +1116,7 @@ namespace KineticValidator
             var patchList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Patch
+                    && n.FileType == KineticContentType.Patch
                     && n.Parent == "patch"
                     && n.Name == "id"
                     && !string.IsNullOrEmpty(n.Value));
@@ -1149,7 +1147,7 @@ namespace KineticValidator
             var duplicatePatchesList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Patch
+                    && n.FileType == KineticContentType.Patch
                     && n.Parent == "patch"
                     && n.Name == "id"
                     && !string.IsNullOrEmpty(n.Value))
@@ -1167,7 +1165,7 @@ namespace KineticValidator
                 for (var i = 1; i < patchDup.Count(); i++)
                 {
                     var oldValue = _jsonPropertiesCollection
-                        .LastOrDefault(n => n.FileType == JsoncContentType.Patch
+                        .LastOrDefault(n => n.FileType == KineticContentType.Patch
                                             && n.FullFileName == patchDup[i - 1].FullFileName
                                             && n.ParentPath == patchDup[i - 1].ParentPath
                                             && n.Name == "value");
@@ -1176,7 +1174,7 @@ namespace KineticValidator
                         continue;
 
                     var newValue = _jsonPropertiesCollection
-                        .LastOrDefault(n => n.FileType == JsoncContentType.Patch
+                        .LastOrDefault(n => n.FileType == KineticContentType.Patch
                                             && n.FullFileName == patchDup[i].FullFileName
                                             && n.ParentPath == patchDup[i].ParentPath
                                             && n.Name == "value");
@@ -1224,7 +1222,7 @@ namespace KineticValidator
             var missedPatchList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType != JsoncContentType.Patch
+                    && n.FileType != KineticContentType.Patch
                     && _patchValues.Any(m =>
                         !string.IsNullOrEmpty(m.Value)
                         && m.Value == n.Value));
@@ -1269,7 +1267,7 @@ namespace KineticValidator
                 .Where(n =>
                     !n.Shared
                     && n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Events
+                    && n.FileType == KineticContentType.Events
                     && n.Name == "message"
                     && !n.Value.Contains("{{strings.")
                     && !IsTableField(n.Value));
@@ -1294,7 +1292,7 @@ namespace KineticValidator
             var stringsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Strings
+                    && n.FileType == KineticContentType.Strings
                     && n.Parent == "strings"
                     && !string.IsNullOrEmpty(n.Value)
                     && !string.IsNullOrEmpty(n.Name));
@@ -1302,7 +1300,7 @@ namespace KineticValidator
             var missedStringsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType != JsoncContentType.Strings
+                    && n.FileType != KineticContentType.Strings
                     && stringsList.Any(m =>
                         !string.IsNullOrEmpty(m.Value)
                         && m.Value == n.Value));
@@ -1373,7 +1371,7 @@ namespace KineticValidator
                 .Where(n =>
                     !n.Shared
                     && n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Strings
+                    && n.FileType == KineticContentType.Strings
                     && n.Parent == "strings"
                     && string.IsNullOrEmpty(n.Name));
 
@@ -1401,7 +1399,7 @@ namespace KineticValidator
                 .Where(n =>
                     !n.Shared
                     && n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Strings
+                    && n.FileType == KineticContentType.Strings
                     && n.Parent == "strings"
                     && string.IsNullOrEmpty(n.Value));
 
@@ -1429,7 +1427,7 @@ namespace KineticValidator
                 .Where(n =>
                     !n.Shared
                     && n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Strings
+                    && n.FileType == KineticContentType.Strings
                     && n.Parent == "strings"
                     && !string.IsNullOrEmpty(n.Value)
                     && !string.IsNullOrEmpty(n.Name));
@@ -1460,7 +1458,7 @@ namespace KineticValidator
             var stringsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Strings
+                    && n.FileType == KineticContentType.Strings
                     && n.Parent == "strings"
                     && !string.IsNullOrEmpty(n.Value)
                     && !string.IsNullOrEmpty(n.Name));
@@ -1499,7 +1497,7 @@ namespace KineticValidator
             var duplicateStringsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Strings
+                    && n.FileType == KineticContentType.Strings
                     && n.Parent == "strings"
                     && !string.IsNullOrEmpty(n.Value)
                     && !string.IsNullOrEmpty(n.Name))
@@ -1555,7 +1553,7 @@ namespace KineticValidator
             var emptyIdsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Events
+                    && n.FileType == KineticContentType.Events
                     && n.Name == "id"
                     && n.Parent == "events"
                     && string.IsNullOrEmpty(n.Value));
@@ -1583,7 +1581,7 @@ namespace KineticValidator
             var emptyEventsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Events
+                    && n.FileType == KineticContentType.Events
                     && n.Name == "id"
                     && n.Parent == "events"
                     && !n.Shared
@@ -1618,7 +1616,7 @@ namespace KineticValidator
             var duplicateIdsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Events
+                    && n.FileType == KineticContentType.Events
                     && n.Name == "id"
                     && n.Parent == "events"
                     && !string.IsNullOrEmpty(n.Value))
@@ -1715,7 +1713,7 @@ namespace KineticValidator
             var idProjectList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Events
+                    && n.FileType == KineticContentType.Events
                     && n.Name == "id"
                     && n.Parent == "events"
                     && !n.Shared
@@ -1726,7 +1724,7 @@ namespace KineticValidator
                        n.ItemType == JsonItemType.Property && n.FullFileName == id.FullFileName &&
                        n.ParentPath == id.ParentPath && n.Name == "trigger")
                    where !_jsonPropertiesCollection.Any(n =>
-                       n.ItemType == JsonItemType.Property && n.FileType == JsoncContentType.Events && n.Name != "id" &&
+                       n.ItemType == JsonItemType.Property && n.FileType == KineticContentType.Events && n.Name != "id" &&
                        n.Value == id.Value)
                    select new ReportItem
                    {
@@ -1751,7 +1749,7 @@ namespace KineticValidator
             var idProjectList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Events
+                    && n.FileType == KineticContentType.Events
                     && n.Name == "id"
                     && n.Parent == "events"
                     && !string.IsNullOrEmpty(n.Value));
@@ -1796,7 +1794,7 @@ namespace KineticValidator
             var emptyDataViewList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.DataViews
+                    && n.FileType == KineticContentType.DataViews
                     && !n.Shared
                     && n.Parent == "dataviews"
                     && n.Name == "id"
@@ -1825,7 +1823,7 @@ namespace KineticValidator
             var dataViewList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.DataViews
+                    && n.FileType == KineticContentType.DataViews
                     && !n.Shared
                     && n.Parent == "dataviews"
                     && n.Name == "id"
@@ -1833,7 +1831,7 @@ namespace KineticValidator
 
             return from viewResource in dataViewList
                    where !_jsonPropertiesCollection.Any(n =>
-                       n.ItemType == JsonItemType.Property && n.FileType != JsoncContentType.DataViews &&
+                       n.ItemType == JsonItemType.Property && n.FileType != KineticContentType.DataViews &&
                        n.Value.Contains(viewResource.Value))
                    select new ReportItem
                    {
@@ -1858,10 +1856,10 @@ namespace KineticValidator
             var dataViewList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.DataViews
+                    && n.FileType == KineticContentType.DataViews
                     && n.Parent == "dataviews"
                     && n.Name == "id"
-                    || n.FileType == JsoncContentType.Events
+                    || n.FileType == KineticContentType.Events
                     && n.Parent == "param"
                     && n.Name == "result"
                     && !string.IsNullOrEmpty(n.Value));
@@ -1874,7 +1872,7 @@ namespace KineticValidator
 
                 var usedDataViewsList = new List<string>();
 
-                if (property.FileType == JsoncContentType.Events
+                if (property.FileType == KineticContentType.Events
                     && property.Parent == "trigger"
                     && property.Name == "target"
                     && !string.IsNullOrEmpty(property.Value)
@@ -1889,7 +1887,7 @@ namespace KineticValidator
                 {
                     usedDataViewsList = GetTableField(property.Value);
                 }
-                else if (property.FileType == JsoncContentType.Events
+                else if (property.FileType == KineticContentType.Events
                          && property.Parent == "trigger"
                          && property.Name == "target"
                          && !string.IsNullOrEmpty(property.Value)
@@ -1947,7 +1945,7 @@ namespace KineticValidator
             var duplicateViewsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.DataViews
+                    && n.FileType == KineticContentType.DataViews
                     && n.Parent == "dataviews"
                     && n.Name == "id"
                     && !string.IsNullOrEmpty(n.Value))
@@ -2002,7 +2000,7 @@ namespace KineticValidator
             var dataTableList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.DataViews
+                    && n.FileType == KineticContentType.DataViews
                     && n.Parent == "dataviews"
                     && n.Name == "table"
                     && !string.IsNullOrEmpty(n.Value))
@@ -2018,7 +2016,7 @@ namespace KineticValidator
 
                 var usedDataTable = "";
 
-                if (property.FileType == JsoncContentType.Events
+                if (property.FileType == KineticContentType.Events
                     && property.Parent == "trigger"
                     && property.Name == "target"
                     && !string.IsNullOrEmpty(property.Value)
@@ -2065,7 +2063,7 @@ namespace KineticValidator
             var emptyRulesList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Rules
+                    && n.FileType == KineticContentType.Rules
                     && n.Parent == "rules"
                     && n.Name == "id"
                     && string.IsNullOrEmpty(n.Value));
@@ -2093,7 +2091,7 @@ namespace KineticValidator
             var duplicateRulesList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Rules
+                    && n.FileType == KineticContentType.Rules
                     && n.Parent == "rules"
                     && n.Name == "id"
                     && !string.IsNullOrEmpty(n.Value))
@@ -2148,7 +2146,7 @@ namespace KineticValidator
             var emptyToolsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Tools
+                    && n.FileType == KineticContentType.Tools
                     && n.Parent == "tools"
                     && n.Name == "id"
                     && string.IsNullOrEmpty(n.Value));
@@ -2176,7 +2174,7 @@ namespace KineticValidator
             var duplicateToolsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Tools
+                    && n.FileType == KineticContentType.Tools
                     && n.Parent == "tools"
                     && n.Name == "id"
                     && !string.IsNullOrEmpty(n.Value))
@@ -2231,7 +2229,7 @@ namespace KineticValidator
             var formsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Events
+                    && n.FileType == KineticContentType.Events
                     && n.Name == "view"
                     && !string.IsNullOrEmpty(n.Value)
                     && n.Parent == "param"
@@ -2240,7 +2238,7 @@ namespace KineticValidator
                         && m.Name == "type"
                         && m.Value == "app-open"
                         && m.FullFileName == n.FullFileName
-                        && m.FileType == JsoncContentType.Events
+                        && m.FileType == KineticContentType.Events
                         && m.ParentPath + ".param" == n.ParentPath));
 
             var report = new List<ReportItem>();
@@ -2340,7 +2338,7 @@ namespace KineticValidator
             var searchesList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Events
+                    && n.FileType == KineticContentType.Events
                     && n.Name == "like"
                     && !string.IsNullOrEmpty(n.Value)
                     && n.Parent == "searchOptions"
@@ -2348,7 +2346,7 @@ namespace KineticValidator
                         m.ItemType == JsonItemType.Property
                         && m.Name == "searchForm"
                         && m.FullFileName == n.FullFileName
-                        && m.FileType == JsoncContentType.Events
+                        && m.FileType == KineticContentType.Events
                         && m.ParentPath == n.ParentPath));
 
             var report = new List<ReportItem>();
@@ -2360,7 +2358,7 @@ namespace KineticValidator
                         && m.Name == "searchForm"
                         && !string.IsNullOrEmpty(m.Value)
                         && m.FullFileName == form.FullFileName
-                        && m.FileType == JsoncContentType.Events
+                        && m.FileType == KineticContentType.Events
                         && m.ParentPath == form.ParentPath)
                     .ToArray();
 
@@ -2369,7 +2367,7 @@ namespace KineticValidator
 
                 var searchName = form.Value
                                  + "\\"
-                                 + formSubFolder.FirstOrDefault().Value;
+                                 + formSubFolder.FirstOrDefault()?.Value;
                 var searchFile = "";
                 switch (_folderType)
                 {
@@ -2500,14 +2498,14 @@ namespace KineticValidator
             var layoutIdList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Layout
+                    && n.FileType == KineticContentType.Layout
                     && n.JsonDepth == 2
                     && n.Name == "id");
 
             return from idItem in layoutIdList
                    let modelId = _jsonPropertiesCollection.Where(n =>
                        n.FullFileName == idItem.FullFileName && n.ItemType == JsonItemType.Property &&
-                       n.FileType == JsoncContentType.Layout && n.ParentPath == idItem.ParentPath + ".model" &&
+                       n.FileType == KineticContentType.Layout && n.ParentPath == idItem.ParentPath + ".model" &&
                        n.Name == "id").ToArray()
                    where !modelId.Any()
                    select new ReportItem
@@ -2533,14 +2531,14 @@ namespace KineticValidator
             var layoutIdList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Layout
+                    && n.FileType == KineticContentType.Layout
                     && n.JsonDepth == 2
                     && n.Name == "id");
 
             return from idItem in layoutIdList
                    let modelId = _jsonPropertiesCollection.Where(n =>
                        n.FullFileName == idItem.FullFileName && n.ItemType == JsonItemType.Property &&
-                       n.FileType == JsoncContentType.Layout && n.ParentPath == idItem.ParentPath + ".model" &&
+                       n.FileType == KineticContentType.Layout && n.ParentPath == idItem.ParentPath + ".model" &&
                        n.Name == "id").ToArray()
                    where modelId.Any()
                    where idItem.Value != modelId.First().Value
@@ -2569,7 +2567,7 @@ namespace KineticValidator
                 .Where(n =>
                     !n.Shared
                     && n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Events
+                    && n.FileType == KineticContentType.Events
                     && n.Name == "type"
                     && n.Value == "dataview-condition");
 
@@ -2580,7 +2578,7 @@ namespace KineticValidator
                     .Where(n =>
                         n.FullFileName == item.FullFileName
                         && n.ItemType == JsonItemType.Property
-                        && n.FileType == JsoncContentType.Events
+                        && n.FileType == KineticContentType.Events
                         && n.ParentPath == item.ParentPath + ".param"
                         && n.Name == "dataview").ToArray();
 
@@ -2588,7 +2586,7 @@ namespace KineticValidator
                     .Where(n =>
                         n.FullFileName == item.FullFileName
                         && n.ItemType == JsonItemType.Property
-                        && n.FileType == JsoncContentType.Events
+                        && n.FileType == KineticContentType.Events
                         && n.ParentPath == item.ParentPath + ".param"
                         && n.Name == "result").ToArray();
 
@@ -2642,7 +2640,7 @@ namespace KineticValidator
                 .Where(n =>
                     !n.Shared
                     && n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Layout
+                    && n.FileType == KineticContentType.Layout
                     && !string.IsNullOrEmpty(n.Value)
                     && n.Name == "tabId").Select(n => n.Value).ToArray();
 
@@ -2650,14 +2648,14 @@ namespace KineticValidator
                 .Where(n =>
                     !n.Shared
                     && n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Layout
+                    && n.FileType == KineticContentType.Layout
                     && n.Name == "sourceTypeId"
                     && n.Value == "metafx-tabstrip");
 
             return from tab in tabStripsList
                    from item in _jsonPropertiesCollection.Where(n =>
                        !n.Shared && n.FullFileName == tab.FullFileName && n.ItemType == JsonItemType.Property &&
-                       n.FileType == JsoncContentType.Layout && n.JsonPath.Contains(tab.ParentPath + ".model.data") &&
+                       n.FileType == KineticContentType.Layout && n.JsonPath.Contains(tab.ParentPath + ".model.data") &&
                        n.Name == "page" && !string.IsNullOrEmpty(n.Value))
                    where !tabIdsList.Contains(item.Value)
                    select new ReportItem
@@ -2684,7 +2682,7 @@ namespace KineticValidator
                 .Where(n =>
                     !n.Shared
                     && n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Events
+                    && n.FileType == KineticContentType.Events
                     && n.Value == "rest-erp"
                     && n.Name == "type");
 
@@ -2694,14 +2692,14 @@ namespace KineticValidator
                 var serviceName = _jsonPropertiesCollection.FirstOrDefault(n => !n.Shared
                     && n.FullFileName == item.FullFileName
                     && n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Events
+                    && n.FileType == KineticContentType.Events
                     && n.JsonPath == item.ParentPath + ".param.svc"
                     && !string.IsNullOrEmpty(n.Value));
 
                 var svcMethodName = _jsonPropertiesCollection.FirstOrDefault(n => !n.Shared
                     && n.FullFileName == item.FullFileName
                     && n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Events
+                    && n.FileType == KineticContentType.Events
                     && n.JsonPath == item.ParentPath + ".param.svcPath"
                     && !string.IsNullOrEmpty(n.Value));
 
@@ -2710,7 +2708,7 @@ namespace KineticValidator
                         !n.Shared
                         && n.FullFileName == item.FullFileName
                         && n.ItemType == JsonItemType.Property
-                        && n.FileType == JsoncContentType.Events
+                        && n.FileType == KineticContentType.Events
                         && (!GetParentName(n.ParentPath).StartsWith("params[")
                             && n.JsonPath.StartsWith(item.ParentPath + ".param.methodParameters")
                             && n.Name == "field"
@@ -2903,7 +2901,7 @@ namespace KineticValidator
             var item2 = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == JsoncContentType.Layout
+                    && n.FileType == KineticContentType.Layout
                     && n.Name == "guid").GroupBy(n => n.Value).Where(n => n.Count() > 1);
 
             var guidList = item2 as IGrouping<string, JsonProperty>[] ?? item2.ToArray();

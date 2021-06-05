@@ -24,13 +24,13 @@ namespace KineticValidator
     {
         public string FileTypeMask;
         public string PropertyTypeName;
-        public JsoncContentType FileType;
+        public KineticContentType FileType;
 
         public ContentTypeItem()
         {
             FileTypeMask = "";
             PropertyTypeName = "";
-            FileType = JsoncContentType.Unknown;
+            FileType = KineticContentType.Unknown;
         }
     }
 
@@ -86,12 +86,12 @@ namespace KineticValidator
             return !fullFileName.Contains(projectPath);
         }
 
-        internal static JsoncContentType GetFileTypeFromFileName(string fullFileName,
-            IEnumerable<ContentTypeItem> _fileTypes)
+        internal static KineticContentType GetFileTypeFromFileName(string fullFileName,
+            IEnumerable<ContentTypeItem> fileTypes)
         {
             var shortFileName = GetShortFileName(fullFileName);
 
-            return (from item in _fileTypes where shortFileName.EndsWith(item.FileTypeMask) select item.FileType).FirstOrDefault();
+            return (from item in fileTypes where shortFileName.EndsWith(item.FileTypeMask) select item.FileType).FirstOrDefault();
         }
 
         internal static string GetShortFileName(string longFileName)
@@ -109,17 +109,17 @@ namespace KineticValidator
             return longFileName;
         }
 
-        private static readonly object lockDevLogFile = new object();
+        private static readonly object LockDevLogFile = new object();
 
         internal static void SaveDevLog(string text)
         {
-            lock (lockDevLogFile)
+            lock (LockDevLogFile)
             {
                 try
                 {
                     File.AppendAllText("DeveloperLog.txt", text + Environment.NewLine);
                 }
-                catch
+                catch (Exception)
                 {
                 }
             }
