@@ -14,14 +14,14 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
+using JsonPathParserLib;
+
 using KineticValidator.Properties;
 
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 using NJsonSchema.Validation;
-
-using static KineticValidator.JsonPathParser;
 
 namespace KineticValidator
 {
@@ -233,7 +233,7 @@ namespace KineticValidator
             if (!(winX == 0 && winY == 0 && winW == 0 && winH == 0))
             {
                 Location = new Point
-                    { X = winX, Y = winY };
+                { X = winX, Y = winY };
                 Width = winW;
                 Height = winH;
             }
@@ -989,82 +989,6 @@ namespace KineticValidator
             return reportsCollection;
         }
 
-        private void ProcessReport(List<ReportItem> reports, bool saveFile = true, bool updateTable = true)
-        {
-            // get list of globally ignored errors
-            var systemIgnoreReportsCollection = JsonIo.LoadJson<List<ReportItem>>(GlobalIgnoreFileName);
-            // get list of ignored errors and filter them out from report
-            var ignoreFile = _projectName + "\\" + IgnoreFileName;
-            var ignoreReportsCollection = new List<ReportItem>();
-            if (File.Exists(ignoreFile))
-                ignoreReportsCollection = JsonIo.LoadJson<List<ReportItem>>(ignoreFile);
-
-            var jsonContent = JsonIo.LoadJson<List<ReportItem>>(ignoreFile);
-            if (jsonContent != null && jsonContent.Count > 0)
-                ignoreReportsCollection.AddRange(jsonContent);
-
-            if (ignoreReportsCollection.Any() || systemIgnoreReportsCollection.Any())
-                for (var i = 0; i < reports.Count; i++)
-                {
-                    if (systemIgnoreReportsCollection.Any(n => n.Equals(reports[i])))
-                    {
-                        reports.RemoveAt(i);
-                        i--;
-                    }
-
-                    if (ignoreReportsCollection.Any(n => n.Equals(reports[i])))
-                    {
-                        reports.RemoveAt(i);
-                        i--;
-                    }
-                }
-
-            // transfer report to table
-            if (!_runFromCmdLine && updateTable)
-                foreach (var reportLine in reports)
-                {
-                    var newRow = _reportTable.NewRow();
-                    newRow[ReportColumns.ProjectName.ToString()] = reportLine.ProjectName ?? "";
-                    newRow[ReportColumns.LineId.ToString()] =
-                        reportLine.LineId?.Replace(SplitChar.ToString(), Environment.NewLine);
-                    newRow[ReportColumns.LineNumber.ToString()] =
-                        reportLine.LineNumber?.Replace(SplitChar.ToString(), Environment.NewLine);
-                    newRow[ReportColumns.StartPosition.ToString()] =
-                        reportLine.StartPosition?.Replace(SplitChar.ToString(), Environment.NewLine);
-                    newRow[ReportColumns.EndPosition.ToString()] =
-                        reportLine.EndPosition?.Replace(SplitChar.ToString(), Environment.NewLine);
-                    newRow[ReportColumns.FileType.ToString()] =
-                        reportLine.FileType?.Replace(SplitChar.ToString(), Environment.NewLine);
-                    newRow[ReportColumns.Message.ToString()] = reportLine.Message ?? "";
-                    newRow[ReportColumns.JsonPath.ToString()] =
-                        reportLine.JsonPath?.Replace(SplitChar.ToString(), Environment.NewLine);
-                    newRow[ReportColumns.ValidationType.ToString()] = reportLine.ValidationType ?? "";
-                    newRow[ReportColumns.Severity.ToString()] = reportLine.Severity ?? "";
-                    newRow[ReportColumns.FullFileName.ToString()] =
-                        reportLine.FullFileName?.Replace(SplitChar.ToString(), Environment.NewLine);
-                    _reportTable.Rows.Add(newRow);
-                }
-
-            if (!saveFile)
-                return;
-
-            try
-            {
-                if (!Directory.Exists(_projectName))
-                    Directory.CreateDirectory(_projectName);
-            }
-            catch (Exception ex)
-            {
-                _textLog.AppendLine($"Can't find directory: {_projectName}{Environment.NewLine}{ex}");
-                return;
-            }
-
-            // save report to json file
-            var reportFileName = _projectName + "\\" + ReportJsonFileName;
-            if (!JsonIo.SaveJson(reports, reportFileName, true))
-                _textLog.AppendLine("Can't save file: " + reportFileName);
-        }
-
         private void DeserializeFile(
             string fullFileName,
             KineticContentType fileType,
@@ -1475,7 +1399,7 @@ namespace KineticValidator
                         parseJsonObjectReportsCollection.Add(report);
                     }
                 }
-                    break;
+                break;
             }
         }
 
@@ -1575,7 +1499,8 @@ namespace KineticValidator
                 if ((col == ReportColumns.ProjectName.ToString() && !collection)
                     || col == ReportColumns.LineId.ToString()
                     || col == ReportColumns.StartPosition.ToString()
-                    || col == ReportColumns.EndPosition.ToString())
+                    || col == ReportColumns.EndPosition.ToString()
+                    || col == ReportColumns.Source.ToString())
                 {
                     newColumn.Visible = false;
                 }
@@ -1583,7 +1508,8 @@ namespace KineticValidator
                 dataGridView_report.Columns.Add(newColumn);
             }
 
-            dataGridView_report.DataError += delegate { };
+            dataGridView_report.DataError += delegate
+            { };
             dataGridView_report.RowHeadersVisible = false;
             dataGridView_report.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.DisplayedCells;
             var column = dataGridView_report.Columns[ReportColumns.Message.ToString()];
@@ -1591,12 +1517,89 @@ namespace KineticValidator
             {
                 column.Width = Settings.Default.MessageColumnWidth;
                 // reserved for future use
-                column.Visible = false;
-                column.Visible = false;
             }
 
             if (_showPreview)
                 dataGridView_report.SelectionChanged += DataGridView_report_SelectionChanged;
+        }
+
+        private void ProcessReport(List<ReportItem> reports, bool saveFile = true, bool updateTable = true)
+        {
+            // get list of globally ignored errors
+            var systemIgnoreReportsCollection = JsonIo.LoadJson<List<ReportItem>>(GlobalIgnoreFileName);
+            // get list of ignored errors and filter them out from report
+            var ignoreFile = _projectName + "\\" + IgnoreFileName;
+            var ignoreReportsCollection = new List<ReportItem>();
+            if (File.Exists(ignoreFile))
+                ignoreReportsCollection = JsonIo.LoadJson<List<ReportItem>>(ignoreFile);
+
+            var jsonContent = JsonIo.LoadJson<List<ReportItem>>(ignoreFile);
+            if (jsonContent != null && jsonContent.Count > 0)
+                ignoreReportsCollection.AddRange(jsonContent);
+
+            if (ignoreReportsCollection.Any() || systemIgnoreReportsCollection.Any())
+                for (var i = 0; i < reports.Count; i++)
+                {
+                    if (systemIgnoreReportsCollection.Any(n => n.Equals(reports[i])))
+                    {
+                        reports.RemoveAt(i);
+                        i--;
+                    }
+
+                    if (ignoreReportsCollection.Any(n => n.Equals(reports[i])))
+                    {
+                        reports.RemoveAt(i);
+                        i--;
+                    }
+                }
+
+            // transfer report to table
+            if (!_runFromCmdLine && updateTable)
+            {
+                foreach (var reportLine in reports)
+                {
+                    var newRow = _reportTable.NewRow();
+                    newRow[ReportColumns.ProjectName.ToString()] = reportLine.ProjectName ?? "";
+                    newRow[ReportColumns.LineId.ToString()] =
+                        reportLine.LineId?.Replace(SplitChar.ToString(), Environment.NewLine);
+                    newRow[ReportColumns.LineNumber.ToString()] =
+                        reportLine.LineNumber?.Replace(SplitChar.ToString(), Environment.NewLine);
+                    newRow[ReportColumns.StartPosition.ToString()] =
+                        reportLine.StartPosition?.Replace(SplitChar.ToString(), Environment.NewLine);
+                    newRow[ReportColumns.EndPosition.ToString()] =
+                        reportLine.EndPosition?.Replace(SplitChar.ToString(), Environment.NewLine);
+                    newRow[ReportColumns.FileType.ToString()] =
+                        reportLine.FileType?.Replace(SplitChar.ToString(), Environment.NewLine);
+                    newRow[ReportColumns.Message.ToString()] = reportLine.Message ?? "";
+                    newRow[ReportColumns.JsonPath.ToString()] =
+                        reportLine.JsonPath?.Replace(SplitChar.ToString(), Environment.NewLine);
+                    newRow[ReportColumns.ValidationType.ToString()] = reportLine.ValidationType ?? "";
+                    newRow[ReportColumns.Source.ToString()] = reportLine.Source ?? "";
+                    newRow[ReportColumns.Severity.ToString()] = reportLine.Severity ?? "";
+                    newRow[ReportColumns.FullFileName.ToString()] =
+                        reportLine.FullFileName?.Replace(SplitChar.ToString(), Environment.NewLine);
+                    _reportTable.Rows.Add(newRow);
+                }
+            }
+
+            if (!saveFile)
+                return;
+
+            try
+            {
+                if (!Directory.Exists(_projectName))
+                    Directory.CreateDirectory(_projectName);
+            }
+            catch (Exception ex)
+            {
+                _textLog.AppendLine($"Can't find directory: {_projectName}{Environment.NewLine}{ex}");
+                return;
+            }
+
+            // save report to json file
+            var reportFileName = _projectName + "\\" + ReportJsonFileName;
+            if (!JsonIo.SaveJson(reports, reportFileName, true))
+                _textLog.AppendLine("Can't save file: " + reportFileName);
         }
 
         private void SaveCollectionToFile(JsonProperty[] typeCollection, string fileName)
@@ -1885,14 +1888,22 @@ namespace KineticValidator
             startPos = -1;
             endPos = -1;
 
-            var pathList = ParseJsonToPathList(json.Replace(' ', ' '), out var _, out var _, "", '.', false);
+            var parcer = new JsonPathParser
+            {
+                TrimComplexValues = false,
+                SaveAllValues = false,
+                RootName = "",
+                JsonPathDivider = '.',
+                FastSearch = false
+            };
 
-            var pathItems = pathList.Where(n => n.Path == "." + path).ToArray();
-            if (!pathItems.Any())
+            var pathItem = parcer.SearchPath(json, "." + path);
+
+            if (pathItem == null)
                 return false;
 
-            startPos = pathItems.Last().StartPosition;
-            endPos = pathItems.Last().EndPosition;
+            startPos = pathItem.StartPosition;
+            endPos = pathItem.EndPosition;
             return true;
         }
 
@@ -1900,7 +1911,9 @@ namespace KineticValidator
         {
             var processInfo = new ProcessStartInfo("code", command)
             {
-                CreateNoWindow = true, UseShellExecute = true, WindowStyle = ProcessWindowStyle.Hidden
+                CreateNoWindow = true,
+                UseShellExecute = true,
+                WindowStyle = ProcessWindowStyle.Hidden
             };
 
             try

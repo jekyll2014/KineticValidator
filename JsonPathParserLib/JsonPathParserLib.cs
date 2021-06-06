@@ -1,77 +1,98 @@
-﻿// This is an independent project of an individual developer. Dear PVS-Studio, please check it.
-// PVS-Studio Static Code Analyzer for C, C++, C#, and Java: http://www.viva64.com
-
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 
-namespace KineticValidator
+namespace JsonPathParserLib
 {
-    internal class JsonPathParser
+    public enum PropertyType
     {
-        public enum PropertyType
-        {
-            Unknown,
-            Comment,
-            Property,
-            KeywordOrNumberProperty,
-            ArrayValue,
-            Object,
-            Array,
-            EndOfObject,
-            EndOfArray,
-            Error
-        }
+        Unknown,
+        Comment,
+        Property,
+        KeywordOrNumberProperty,
+        ArrayValue,
+        Object,
+        EndOfObject,
+        Array,
+        EndOfArray,
+        Error
+    }
 
-        public enum ValueType
-        {
-            Unknown,
-            NotProperty,
-            String,
-            Number,
-            Boolean,
-            Null,
-        }
+    public enum JsonValueType
+    {
+        Unknown,
+        NotProperty,
+        String,
+        Number,
+        Boolean,
+        Null,
+    }
 
-        public class ParsedProperty
-        {
-            public int StartPosition = -1;
-            public int EndPosition = -1;
-            public string Path = "";
-            public string Name = "";
-            public string Value = "";
-            public PropertyType PropertyType = PropertyType.Unknown;
-            public ValueType ValueType;
+    public class ParsedProperty
+    {
+        public int StartPosition = -1;
+        public int EndPosition = -1;
+        public string Path = "";
+        public string Name = "";
+        public string Value = "";
+        public PropertyType PropertyType = PropertyType.Unknown;
+        public JsonValueType ValueType;
 
-            public int Length
+        public int Length
+        {
+            get
             {
-                get
-                {
-                    if (StartPosition == -1 || EndPosition == -1)
-                        return 0;
+                if (StartPosition == -1 || EndPosition == -1)
+                    return 0;
 
-                    return EndPosition - StartPosition + 1;
-                }
+                return EndPosition - StartPosition + 1;
             }
         }
 
-        private static string _jsonText = "";
-        private static string _rootName = "root";
-        private static char _pathDivider = '.';
-        private static bool _saveAllValues;
-        private static List<ParsedProperty> _pathIndex = new List<ParsedProperty>();
-
-        private static readonly char[] EscapeChars = { '\"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u' };
-        private static readonly char[] KeywordOrNumberChars = "-0123456789.truefalsnl".ToCharArray();
-        private static readonly string[] Keywords = { "true", "false", "null" };
-
-        private static bool _errorFound;
-
-        public static IEnumerable<ParsedProperty> ParseJsonToPathList(string json, out int endPosition, out bool errorFound, string rootName = "root", char pathDivider = '.', bool saveAllValues = true)
+        public override string ToString()
         {
-            _rootName = rootName;
-            _pathDivider = pathDivider;
+            return Path;
+        }
+    }
+
+    public class JsonPathParser
+    {
+        private string _jsonText = "";
+        private string _rootName = "root";
+        private char _jsonPathDivider = '.';
+        private bool _saveAllValues = false;
+        private bool _trimComplexValues = false;
+        private bool _fastSearch = false;
+
+        private List<ParsedProperty> _pathIndex;
+
+        private readonly char[] EscapeChars = new char[] { '\"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u' };
+        private readonly char[] AllowedChars = new char[] { ' ', '\t', '\r', '\n' };
+        private readonly char[] IncorrectChars = new char[] { '\r', '\n' };
+        private readonly char[] KeywordOrNumberChars = "-0123456789.truefalsnl".ToCharArray();
+        private readonly string[] Keywords = { "true", "false", "null" };
+
+        private bool _errorFound;
+        private bool _searchMode;
+        private string _searchPath;
+
+        public bool TrimComplexValues { get => this._trimComplexValues; set => this._trimComplexValues = value; }
+        public bool SaveAllValues { get => this._saveAllValues; set => this._saveAllValues = value; }
+        public char JsonPathDivider { get => this._jsonPathDivider; set => this._jsonPathDivider = value; }
+        public string RootName { get => this._rootName; set => this._rootName = value; }
+        public bool FastSearch { get => this._fastSearch; set => this._fastSearch = value; }
+
+        public IEnumerable<ParsedProperty> ParseJsonToPathList(string json, out int endPosition, out bool errorFound)
+        {
+            _searchMode = false;
+            _searchPath = "";
+            var result = StartParser(json, out endPosition, out errorFound);
+
+            return result;
+        }
+
+        private IEnumerable<ParsedProperty> StartParser(string json, out int endPosition, out bool errorFound)
+        {
             _jsonText = json;
-            _saveAllValues = saveAllValues;
             endPosition = 0;
             _errorFound = false;
             _pathIndex = new List<ParsedProperty>();
@@ -119,15 +140,27 @@ namespace KineticValidator
             return _pathIndex;
         }
 
-        public static IEnumerable<ParsedProperty> ParseJsonToPathList(string json)
+        public IEnumerable<ParsedProperty> ParseJsonToPathList(string json)
         {
-            return ParseJsonToPathList(json, out var _, out var _);
+            return StartParser(json, out var _, out var _);
         }
 
-        private static int FindStartOfNextToken(int pos, out PropertyType foundObjectType)
+        public ParsedProperty SearchPath(string json, string path)
+        {
+            _searchMode = true;
+            _searchPath = path;
+            var items = StartParser(json, out var _, out var _);
+
+            if (items == null || !items.Any())
+                return null;
+
+            return items?.Where(n => n.Path == path).FirstOrDefault();
+        }
+
+        private int FindStartOfNextToken(int pos, out PropertyType foundObjectType)
         {
             foundObjectType = new PropertyType();
-            var allowedChars = new List<char> { ' ', '\t', '\r', '\n', ',' };
+            var allowedChars = new char[] { ' ', '\t', '\r', '\n', ',' };
 
             for (; pos < _jsonText.Length; pos++)
             {
@@ -175,14 +208,34 @@ namespace KineticValidator
             return pos;
         }
 
-        private static int GetComment(int pos, string currentPath)
+        private int GetComment(int pos, string currentPath)
         {
+            if (_searchMode)
+            {
+                var lastItem = _pathIndex?.LastOrDefault();
+                if (lastItem?.Path == _searchPath)
+                {
+                    if (_fastSearch
+                        || (!_fastSearch
+                        && lastItem?.PropertyType != PropertyType.Array
+                        && lastItem?.PropertyType != PropertyType.Object))
+                    {
+                        _errorFound = true;
+                        return pos;
+                    }
+                }
+                else
+                {
+                    _pathIndex?.Remove(_pathIndex?.LastOrDefault());
+                }
+            }
+
             var newElement = new ParsedProperty
             {
                 PropertyType = PropertyType.Comment,
                 StartPosition = pos,
                 Path = currentPath,
-                ValueType = ValueType.NotProperty
+                ValueType = JsonValueType.NotProperty
             };
             _pathIndex.Add(newElement);
 
@@ -218,6 +271,11 @@ namespace KineticValidator
                             return pos;
                         }
                     }
+
+                    pos--;
+                    newElement.EndPosition = pos;
+                    newElement.Value = _jsonText.Substring(newElement.StartPosition + 2,
+                        newElement.EndPosition - newElement.StartPosition + 1);
 
                     return pos;
                 }
@@ -264,9 +322,27 @@ namespace KineticValidator
             return pos;
         }
 
-        private static int GetPropertyName(int pos, string currentPath)
+        private int GetPropertyName(int pos, string currentPath)
         {
-            var incorrectChars = new List<char> { '\r', '\n' };
+            if (_searchMode)
+            {
+                var lastItem = _pathIndex?.LastOrDefault();
+                if (lastItem?.Path == _searchPath)
+                {
+                    if (_fastSearch
+                        || (!_fastSearch
+                        && lastItem?.PropertyType != PropertyType.Array
+                        && lastItem?.PropertyType != PropertyType.Object))
+                    {
+                        _errorFound = true;
+                        return pos;
+                    }
+                }
+                else
+                {
+                    _pathIndex?.Remove(_pathIndex?.LastOrDefault());
+                }
+            }
 
             var newElement = new ParsedProperty
             {
@@ -275,7 +351,6 @@ namespace KineticValidator
             _pathIndex.Add(newElement);
 
             pos++;
-
             for (; pos < _jsonText.Length; pos++) // searching for property name end
             {
                 var currentChar = _jsonText[pos];
@@ -344,7 +419,7 @@ namespace KineticValidator
                         return pos;
                     }
 
-                    currentPath += _pathDivider + newElement.Name;
+                    currentPath += _jsonPathDivider + newElement.Name;
                     newElement.Path = currentPath;
                     switch (_jsonText[pos])
                     {
@@ -352,12 +427,17 @@ namespace KineticValidator
                         case '{':
                             newElement.PropertyType = PropertyType.Object;
                             newElement.EndPosition = pos = GetObject(pos, currentPath, false);
-                            newElement.ValueType = ValueType.NotProperty;
+                            newElement.ValueType = JsonValueType.NotProperty;
 
                             if (_saveAllValues)
                             {
-                                newElement.Value = TrimObjectValue(_jsonText.Substring(newElement.StartPosition,
-                                newElement.EndPosition - newElement.StartPosition + 1));
+                                newElement.Value = _jsonText.Substring(newElement.StartPosition,
+                                newElement.EndPosition - newElement.StartPosition + 1);
+
+                                if (_trimComplexValues)
+                                {
+                                    newElement.Value = TrimObjectValue(newElement.Value);
+                                }
                             }
 
                             return pos;
@@ -365,12 +445,17 @@ namespace KineticValidator
                         case '[':
                             newElement.PropertyType = PropertyType.Array;
                             newElement.EndPosition = pos = GetArray(pos, currentPath);
-                            newElement.ValueType = ValueType.NotProperty;
+                            newElement.ValueType = JsonValueType.NotProperty;
 
                             if (_saveAllValues)
                             {
-                                newElement.Value = TrimArrayValue(_jsonText.Substring(newElement.StartPosition,
-                                    newElement.EndPosition - newElement.StartPosition + 1));
+                                newElement.Value = _jsonText.Substring(newElement.StartPosition,
+                                    newElement.EndPosition - newElement.StartPosition + 1);
+
+                                if (_trimComplexValues)
+                                {
+                                    newElement.Value = TrimArrayValue(newElement.Value);
+                                }
                             }
 
                             return pos;
@@ -381,11 +466,11 @@ namespace KineticValidator
                             var newValue = _jsonText.Substring(valueStartPosition, pos - valueStartPosition + 1)
                                    .Trim();
                             newElement.ValueType = GetVariableType(newValue);
-                            newElement.Value = newElement.ValueType == ValueType.String ? newValue.Trim('\"') : newValue;
+                            newElement.Value = newElement.ValueType == JsonValueType.String ? newValue.Trim('\"') : newValue;
                             return pos;
                     }
                 }
-                else if (incorrectChars.Contains(currentChar)) // check restricted chars
+                else if (IncorrectChars.Contains(currentChar)) // check restricted chars
                 {
                     _errorFound = true;
                     return pos;
@@ -396,20 +481,40 @@ namespace KineticValidator
             return pos;
         }
 
-        private static int GetKeywordOrNumber(int pos, string currentPath, bool isArray)
+        private int GetKeywordOrNumber(int pos, string currentPath, bool isArray)
         {
+            if (_searchMode)
+            {
+                var lastItem = _pathIndex?.LastOrDefault();
+                if (lastItem?.Path == _searchPath)
+                {
+                    if (_fastSearch
+                        || (!_fastSearch
+                        && lastItem?.PropertyType != PropertyType.Array
+                        && lastItem?.PropertyType != PropertyType.Object))
+                    {
+                        _errorFound = true;
+                        return pos;
+                    }
+                }
+                else
+                {
+                    _pathIndex?.Remove(_pathIndex?.LastOrDefault());
+                }
+            }
+
             var newElement = new ParsedProperty
             {
                 StartPosition = pos
             };
             _pathIndex.Add(newElement);
 
-            var endingChars = new List<char> { ',', ']', '\r', '\n', '/' };
+            var endingChars = new char[] { ',', '}', ']', '\r', '\n', '/' };
 
-            for (; pos < _jsonText.Length; pos++) // searching for property name end
+            for (; pos < _jsonText.Length; pos++) // searching for token end
             {
                 var currentChar = _jsonText[pos];
-                // end of property name found
+                // end of token found
                 if (endingChars.Contains(currentChar))
                 {
                     pos--;
@@ -424,7 +529,7 @@ namespace KineticValidator
                     }
 
                     newElement.Value = newValue;
-                    newElement.PropertyType = isArray ? PropertyType.ArrayValue : PropertyType.KeywordOrNumberProperty;
+                    newElement.PropertyType = isArray ? PropertyType.ArrayValue : PropertyType.Property;
                     newElement.EndPosition = pos;
                     newElement.Path = currentPath;
                     newElement.ValueType = GetVariableType(newValue);
@@ -443,9 +548,8 @@ namespace KineticValidator
             return pos;
         }
 
-        private static int GetPropertyDivider(int pos, string currentPath)
+        private int GetPropertyDivider(int pos, string currentPath)
         {
-            var allowedChars = new List<char> { ' ', '\t', '\r', '\n' };
             for (; pos < _jsonText.Length; pos++)
             {
                 switch (_jsonText[pos])
@@ -458,7 +562,7 @@ namespace KineticValidator
                         pos = GetComment(pos, currentPath);
                         break;
                     default:
-                        if (!allowedChars.Contains(_jsonText[pos]))
+                        if (!AllowedChars.Contains(_jsonText[pos]))
                         {
                             _errorFound = true;
                             return pos;
@@ -471,9 +575,8 @@ namespace KineticValidator
             return pos;
         }
 
-        private static int GetPropertyValue(int pos, string currentPath)
+        private int GetPropertyValue(int pos, string currentPath)
         {
-            var allowedChars = new[] { ' ', '\t', '\r', '\n' };
             for (; pos < _jsonText.Length; pos++)
             {
                 switch (_jsonText[pos])
@@ -490,7 +593,6 @@ namespace KineticValidator
                     case '\"':
                     {
                         pos++;
-                        var incorrectChars = new List<char> { '\r', '\n' }; // to be added
 
                         for (; pos < _jsonText.Length; pos++)
                         {
@@ -518,7 +620,7 @@ namespace KineticValidator
                             {
                                 return pos;
                             }
-                            else if (incorrectChars.Contains(_jsonText[pos])) // check restricted chars
+                            else if (IncorrectChars.Contains(_jsonText[pos])) // check restricted chars
                             {
                                 _errorFound = true;
                                 return pos;
@@ -529,10 +631,10 @@ namespace KineticValidator
                         return pos;
                     }
                     default:
-                        if (!allowedChars.Contains(_jsonText[pos])) // it's a property non-string value
+                        if (!AllowedChars.Contains(_jsonText[pos])) // it's a property non-string value
                         {
                             // ??? check this
-                            var endingChars = new[] { ',', ']', '}', ' ', '\t', '\r', '\n', '/' };
+                            var endingChars = new char[] { ',', ']', '}', ' ', '\t', '\r', '\n', '/' };
                             for (; pos < _jsonText.Length; pos++)
                             {
                                 if (endingChars.Contains(_jsonText[pos]))
@@ -556,7 +658,7 @@ namespace KineticValidator
             return pos;
         }
 
-        private static int GetArray(int pos, string currentPath)
+        private int GetArray(int pos, string currentPath)
         {
             pos++;
             var arrayIndex = 0;
@@ -587,6 +689,11 @@ namespace KineticValidator
                         arrayIndex++;
                         break;
                     case PropertyType.EndOfArray:
+                        if (_searchMode && currentPath == _searchPath)
+                        {
+                            _errorFound = true;
+                        }
+
                         return pos;
                     default:
                         _errorFound = true;
@@ -603,19 +710,40 @@ namespace KineticValidator
             return pos;
         }
 
-        private static int GetObject(int pos, string currentPath, bool save = true)
+        private int GetObject(int pos, string currentPath, bool save = true)
         {
+            if (_searchMode)
+            {
+                var lastItem = _pathIndex?.LastOrDefault();
+                if (lastItem?.Path == _searchPath)
+                {
+                    if (_fastSearch
+                        || (!_fastSearch
+                        && lastItem?.PropertyType != PropertyType.Array
+                        && lastItem?.PropertyType != PropertyType.Object))
+                    {
+                        _errorFound = true;
+                        return pos;
+                    }
+                }
+                else
+                {
+                    _pathIndex?.Remove(_pathIndex?.LastOrDefault());
+                }
+            }
+
             var newElement = new ParsedProperty();
             if (save)
             {
                 newElement.StartPosition = pos;
                 newElement.PropertyType = PropertyType.Object;
                 newElement.Path = currentPath;
-                newElement.ValueType = ValueType.NotProperty;
+                newElement.ValueType = JsonValueType.NotProperty;
                 _pathIndex.Add(newElement);
             }
 
             pos++;
+
             for (; pos < _jsonText.Length; pos++)
             {
                 pos = FindStartOfNextToken(pos, out var foundObjectType);
@@ -636,15 +764,30 @@ namespace KineticValidator
                         pos = GetObject(pos, currentPath);
                         break;
                     case PropertyType.EndOfObject:
-                        if (!_errorFound && save)
+                        if (save)
                         {
                             newElement.EndPosition = pos;
                             if (_saveAllValues)
                             {
-                                newElement.Value = TrimObjectValue(_jsonText.Substring(newElement.StartPosition,
-                                    newElement.EndPosition - newElement.StartPosition + 1));
+                                newElement.Value = _jsonText.Substring(newElement.StartPosition,
+                                    newElement.EndPosition - newElement.StartPosition + 1);
+
+                                if (_trimComplexValues)
+                                {
+                                    newElement.Value = TrimObjectValue(newElement.Value);
+                                }
+                            }
+
+                            if (_searchMode)
+                            {
+                                if (currentPath == _searchPath)
+                                {
+                                    _errorFound = true;
+                                    return pos;
+                                }
                             }
                         }
+
                         return pos;
                     default:
                         _errorFound = true;
@@ -661,7 +804,7 @@ namespace KineticValidator
             return pos;
         }
 
-        private static bool IsNumeric(string str)
+        private bool IsNumeric(string str)
         {
             if (string.IsNullOrEmpty(str))
             {
@@ -671,34 +814,34 @@ namespace KineticValidator
             return str.All(c => (c >= '0' && c <= '9') || c == '.' || c == '-');
         }
 
-        public static ValueType GetVariableType(string text)
+        public JsonValueType GetVariableType(string text)
         {
-            var type = ValueType.Unknown;
+            var type = JsonValueType.Unknown;
 
             if (string.IsNullOrEmpty(text))
             {
-                type = ValueType.Unknown;
+                type = JsonValueType.Unknown;
             }
             else if (IsNumeric(text))
             {
-                type = ValueType.Number;
+                type = JsonValueType.Number;
             }
             else if (text == "null")
             {
-                type = ValueType.Null;
+                type = JsonValueType.Null;
             }
             else if (text == "true" || text == "false")
             {
-                type = ValueType.Boolean;
+                type = JsonValueType.Boolean;
             }
             else if (text.Length > 1 && text[0] == ('\"') && text[text.Length - 1] == ('\"'))
             {
-                type = ValueType.String;
+                type = JsonValueType.String;
             }
             return type;
         }
 
-        public static string TrimObjectValue(string objectText)
+        public string TrimObjectValue(string objectText)
         {
             if (string.IsNullOrEmpty(objectText))
             {
@@ -716,7 +859,7 @@ namespace KineticValidator
             return objectText.Substring(startPosition + 1, endPosition - startPosition - 1).Trim();
         }
 
-        public static string TrimArrayValue(string arrayText)
+        public string TrimArrayValue(string arrayText)
         {
             if (string.IsNullOrEmpty(arrayText))
             {

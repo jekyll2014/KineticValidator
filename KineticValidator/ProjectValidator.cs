@@ -13,10 +13,10 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
+using JsonPathParserLib;
+
 using NJsonSchema;
 using NJsonSchema.Validation;
-
-using static KineticValidator.JsonPathParser;
 
 namespace KineticValidator
 {
@@ -668,7 +668,15 @@ namespace KineticValidator
                     return list;
                 }
 
-                list = ParseJsonToPathList(json.Replace(' ', ' '), out var _, out var _, "", '.', false).ToList();
+                var parcer = new JsonPathParser
+                {
+                    TrimComplexValues = false,
+                    SaveAllValues = false,
+                    RootName = "",
+                    JsonPathDivider = '.',
+                };
+
+                list = parcer.ParseJsonToPathList(json.Replace(' ', ' '), out var _, out var _).ToList();
                 _parsedFiles.TryAdd(file, list);
             }
             else
@@ -903,17 +911,17 @@ namespace KineticValidator
             fullFilesList.AddRange(foundFiles);
 
             var report = (from file in fullFilesList
-                where file.IndexOf(_projectPath + "\\views\\", StringComparison.OrdinalIgnoreCase) < 0
-                where !_processedFilesList.ContainsKey(file) && !Utilities.IsShared(file, _projectPath)
-                select new ReportItem
-                {
-                    ProjectName = _projectName,
-                    FullFileName = file,
-                    Message = "File is not used in the project",
-                    ValidationType = ValidationTypeEnum.Logic.ToString(),
-                    Severity = ImportanceEnum.Note.ToString(),
-                    Source = methodName
-                }).ToList();
+                          where file.IndexOf(_projectPath + "\\views\\", StringComparison.OrdinalIgnoreCase) < 0
+                          where !_processedFilesList.ContainsKey(file) && !Utilities.IsShared(file, _projectPath)
+                          select new ReportItem
+                          {
+                              ProjectName = _projectName,
+                              FullFileName = file,
+                              Message = "File is not used in the project",
+                              ValidationType = ValidationTypeEnum.Logic.ToString(),
+                              Severity = ImportanceEnum.Note.ToString(),
+                              Source = methodName
+                          }).ToList();
 
             return report;
         }
@@ -1024,10 +1032,12 @@ namespace KineticValidator
                 {
                     var names = "";
                     foreach (var item in dup)
+                    {
                         if (string.IsNullOrEmpty(names))
                             names += item.Value;
                         else
                             names += ", " + item.Value;
+                    }
 
                     var reportItem = new ReportItem
                     {
