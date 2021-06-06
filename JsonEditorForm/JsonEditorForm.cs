@@ -6,11 +6,13 @@ using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
 
+using JsonPathParserLib;
+
 using ScintillaNET;
 
 using ScintillaNETviewer.Utils;
 
-namespace KineticValidator
+namespace JsonEditorForm
 {
     public partial class JsonViewer : Form
     {
@@ -50,13 +52,14 @@ namespace KineticValidator
         // so we'll use indicator 8 to highlight words.
         private const int INDICATOR_NUM = 8;
         private const int PERMANENT_INDICATOR_NUM = 9;
+        private const int SEARCH_INDICATOR_NUM = 10;
 
         private Scintilla _textArea = new Scintilla();
         private readonly string _text = "";
         private string _fileName = "";
         public bool SingleLineBrackets = false;
         private bool _multipleSearchActive;
-        private bool _textChanged;
+        private bool _textChanged = false;
 
         public string EditorText
         {
@@ -154,7 +157,7 @@ namespace KineticValidator
             }
             else
             {
-                Text += _fileName;
+                //Text += _fileName;
                 _textArea.Text = _text;
             }
 
@@ -376,11 +379,11 @@ namespace KineticValidator
 
             if (!File.Exists(fullFileName))
             {
-                MessageBox.Show("File not found: " + fullFileName);
+                //MessageBox.Show("File not found: " + fullFileName);
                 return false;
             }
 
-            Text += fullFileName;
+            //Text += fullFileName;
             _fileName = fullFileName;
 
             var fileContent = "";
@@ -388,7 +391,7 @@ namespace KineticValidator
             {
                 fileContent = File.ReadAllText(fullFileName);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
 
             }
@@ -412,11 +415,11 @@ namespace KineticValidator
 
             if (!File.Exists(fullFileName))
             {
-                MessageBox.Show("File not found: " + fullFileName);
+                //MessageBox.Show("File not found: " + fullFileName);
                 return false;
             }
 
-            Text += fullFileName;
+            //Text += fullFileName;
             _fileName = fullFileName;
 
             var fileContent = "";
@@ -424,13 +427,13 @@ namespace KineticValidator
             {
                 fileContent = File.ReadAllText(fullFileName);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
 
             }
 
             _textArea.Text = SingleLineBrackets
-                ? JsonIo.BeautifyJson(fileContent, SingleLineBrackets)
+                ? Utilities.BeautifyJson(fileContent, SingleLineBrackets)
                 : fileContent;
 
             _textArea.TextChanged -= TextChangedFlag;
@@ -451,7 +454,7 @@ namespace KineticValidator
 
             if (showDialog)
             {
-                var choice = MessageBox.Show("Do you want to save file?", "File has been changed", MessageBoxButtons.YesNo);
+                var choice = MessageBox.Show("Are you sure to exit?", "Do you want to save file?", MessageBoxButtons.YesNo);
                 if (choice == DialogResult.No)
                 {
                     return false;
@@ -462,6 +465,7 @@ namespace KineticValidator
             {
                 if (makeBackup)
                 {
+                    //var bakFileName = ChangeFileExt(fullFileName, "bak");
                     var bakFileName = fullFileName + ".bak";
 
                     if (File.Exists(fullFileName))
@@ -474,7 +478,7 @@ namespace KineticValidator
 
                 File.WriteAllText(fullFileName, _textArea.Text);
             }
-            catch (Exception)
+            catch (Exception Ex)
             {
                 return false;
             }
@@ -595,7 +599,7 @@ namespace KineticValidator
 
         private void FormatText()
         {
-            _textArea.Text = JsonIo.BeautifyJson(_textArea.Text, SingleLineBrackets);
+            _textArea.Text = Utilities.BeautifyJson(_textArea.Text, SingleLineBrackets);
             _textArea.SelectionStart = _textArea.SelectionEnd = 0;
             _textArea.ScrollCaret();
         }
@@ -768,9 +772,12 @@ namespace KineticValidator
                 }
 
                 Close();
+
                 return;
             }
 
+            _textArea.IndicatorCurrent = SEARCH_INDICATOR_NUM;
+            _textArea.IndicatorClearRange(0, _textArea.TextLength);
             _searchIsOpen = false;
             InvokeIfNeeded(delegate
             {
@@ -797,6 +804,7 @@ namespace KineticValidator
         private void TxtSearch_TextChanged(object sender, EventArgs e)
         {
             SearchManager.Find(true, true);
+            HighlightSearch(_textArea.SelectedText);
         }
 
         private void TxtSearch_KeyDown(object sender, KeyEventArgs e)
@@ -845,94 +853,111 @@ namespace KineticValidator
             _multipleSearchActive = true;
         }
 
+        private void HighlightSearch(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return;
+
+            // Remove all uses of our indicator
+            _textArea.IndicatorCurrent = SEARCH_INDICATOR_NUM;
+            _textArea.IndicatorClearRange(0, _textArea.TextLength);
+
+            // Update indicator appearance
+            _textArea.Indicators[SEARCH_INDICATOR_NUM].Style = IndicatorStyle.StraightBox;
+            _textArea.Indicators[SEARCH_INDICATOR_NUM].Under = true;
+            _textArea.Indicators[SEARCH_INDICATOR_NUM].ForeColor = Color.Blue;
+            _textArea.Indicators[SEARCH_INDICATOR_NUM].OutlineAlpha = 50;
+            _textArea.Indicators[SEARCH_INDICATOR_NUM].Alpha = 50;
+
+            // Search the document
+            _textArea.TargetStart = 0;
+            _textArea.TargetEnd = _textArea.TextLength;
+            _textArea.SearchFlags = SearchFlags.None;
+            while (_textArea.SearchInTarget(text) != -1)
+            {
+                // Mark the search results with the current indicator
+                _textArea.IndicatorFillRange(_textArea.TargetStart, _textArea.TargetEnd - _textArea.TargetStart);
+
+                // Search the remainder of the document
+                _textArea.TargetStart = _textArea.TargetEnd;
+                _textArea.TargetEnd = _textArea.TextLength;
+            }
+
+            _multipleSearchActive = true;
+        }
 
         #endregion
 
-        #region Utils
+        #region Selection
 
-        private void InvokeIfNeeded(Action action)
-        {
-            if (InvokeRequired)
-                BeginInvoke(action);
-            else
-                action.Invoke();
-        }
-
-        public void SelectText(string text)
-        {
-            if (FindTextLines(_textArea.Text, text, out var startLine, out var lineNum))
-                SelectTextLines(startLine, lineNum);
-        }
-
-        public void PermanentHighlightText(string text)
-        {
-            if (FindTextLines(_textArea.Text, text, out var startLine, out var lineNum))
-                PermanentHighlightLines(startLine, lineNum);
-        }
-
-        private static bool FindTextLines(string text, string sample, out int startLine, out int lineNum)
-        {
-            startLine = 0;
-            lineNum = 0;
-            var compactText = JsonIo.TrimJson(text, true);
-            var compactSample = JsonIo.TrimJson(sample, true);
-            var startIndex = compactText.IndexOf(compactSample, StringComparison.Ordinal);
-            if (startIndex < 0)
-                return false;
-
-            startLine = CountLines(compactText, 0, startIndex);
-            lineNum = CountLines(compactText, startIndex, startIndex + compactSample.Length);
-
-            return true;
-        }
-
-        private static int CountLines(string text, int startIndex, int endIndex)
-        {
-            var linesCount = 0;
-            for (; startIndex < endIndex; startIndex++)
-            {
-                if (text[startIndex] != '\r' && text[startIndex] != '\n')
-                    continue;
-
-                linesCount++;
-                if (text[startIndex] != text[startIndex + 1] &&
-                    (text[startIndex + 1] == '\r' || text[startIndex + 1] == '\n'))
-                    startIndex++;
-            }
-
-            return linesCount;
-        }
-
-        public void SelectTextLines(int lineStart, int lineNum)
-        {
-            if (lineStart < 0 || lineStart >= _textArea.Lines.Count || lineNum <= 0)
-                return;
-
-            var startLine = _textArea.Lines[lineStart];
-            var endLine = _textArea.Lines[lineStart + lineNum - 1];
-            _textArea.SetSelection(startLine.Position, endLine.Position + endLine.Length);
-
-            _textArea.ScrollCaret();
-        }
-
-        public void SelectPosition(int start, int end)
+        public bool SelectPosition(int start, int end)
         {
             if (start < 0 || start >= _textArea.TextLength)
-                return;
+                return false;
             if (end < 0 || end >= _textArea.TextLength)
-                return;
+                return false;
 
             _textArea.SelectionStart = start;
             _textArea.SelectionEnd = end;
             _textArea.ScrollCaret();
+
+            return true;
         }
 
-        public void PermanentHighlight(int start, int end)
+        public bool SelectLines(int lineStart, int lineNum)
+        {
+            if (lineStart < 0 || lineStart >= _textArea.Lines.Count || lineNum <= 0)
+                return false;
+
+            var startLine = _textArea.Lines[lineStart];
+            var endLine = _textArea.Lines[lineStart + lineNum - 1];
+            //_textArea.SetSelection(startLine.Position, endLine.Position + endLine.Length);
+            //_textArea.ScrollCaret();
+
+            return SelectPosition(startLine.Position, endLine.Position + endLine.Length);
+        }
+
+        public bool SelectText(string text)
+        {
+            if (Utilities.FindTextLines(_textArea.Text, text, out var startLine, out var lineNum))
+            {
+                return SelectLines(startLine, lineNum);
+            }
+
+            return false;
+        }
+
+        public bool SelectPathText(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return false;
+
+            var parcer = new JsonPathParser
+            {
+                TrimComplexValues = false,
+                SaveAllValues = false,
+                RootName = "",
+                JsonPathDivider = '.',
+                FastSearch = false
+            };
+
+            var pathItem = parcer.SearchPath(_textArea.Text, "." + path);
+
+            if (pathItem == null)
+                return false;
+
+            var startPos = pathItem.StartPosition;
+            var endPos = pathItem.EndPosition;
+
+            return SelectPosition(startPos, endPos);
+        }
+
+        public bool HighlightPosition(int start, int end)
         {
             if (start < 0 || start >= _textArea.TextLength)
-                return;
+                return false;
             if (end < 0 || end >= _textArea.TextLength)
-                return;
+                return false;
 
             // Remove all uses of our indicator
             _textArea.IndicatorCurrent = PERMANENT_INDICATOR_NUM;
@@ -951,35 +976,69 @@ namespace KineticValidator
             //_textArea.LineScroll(5, 0);
 
             _multipleSearchActive = true;
+
+            return true;
         }
 
-        public void PermanentHighlightLines(int startLine, int linesNumber)
+        public bool HighlightLines(int startLine, int linesNumber)
         {
             if (startLine < 0 || startLine >= _textArea.TextLength)
-                return;
+                return false;
             if (linesNumber < 0 || linesNumber >= _textArea.TextLength)
-                return;
-
-            // Remove all uses of our indicator
-            _textArea.IndicatorCurrent = PERMANENT_INDICATOR_NUM;
-            _textArea.IndicatorClearRange(0, _textArea.TextLength);
-
-            // Update indicator appearance
-            _textArea.Indicators[PERMANENT_INDICATOR_NUM].Style = IndicatorStyle.RoundBox;
-            _textArea.Indicators[PERMANENT_INDICATOR_NUM].Under = true;
-            _textArea.Indicators[PERMANENT_INDICATOR_NUM].ForeColor = Color.DarkRed;
-            _textArea.Indicators[PERMANENT_INDICATOR_NUM].OutlineAlpha = 100;
-            _textArea.Indicators[PERMANENT_INDICATOR_NUM].Alpha = 50;
+                return false;
 
             // Mark the search results with the current indicator
             var startPosition = _textArea.Lines[startLine].Position;
             var endPosition = _textArea.Lines[startLine + linesNumber].EndPosition;
 
+            return HighlightPosition(startPosition, endPosition);
+        }
 
-            _textArea.IndicatorFillRange(startPosition, endPosition - startPosition);
-            _textArea.ScrollRange(startPosition, endPosition);
+        public bool HighlightText(string text)
+        {
+            if (Utilities.FindTextLines(_textArea.Text, text, out var startLine, out var lineNum))
+            {
+                return HighlightLines(startLine, lineNum);
+            }
 
-            _multipleSearchActive = true;
+            return false;
+        }
+
+        public bool HighlightPathJson(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return false;
+
+            var parcer = new JsonPathParser
+            {
+                TrimComplexValues = false,
+                SaveAllValues = false,
+                RootName = "",
+                JsonPathDivider = '.',
+                FastSearch = false
+            };
+
+            var pathItem = parcer.SearchPath(_textArea.Text, "." + path);
+
+            if (pathItem == null)
+                return false;
+
+            var startPos = pathItem.StartPosition;
+            var endPos = pathItem.EndPosition;
+
+            return HighlightPosition(startPos, endPos + 1);
+        }
+
+        #endregion
+
+        #region Utilities
+
+        private void InvokeIfNeeded(Action action)
+        {
+            if (InvokeRequired)
+                BeginInvoke(action);
+            else
+                action.Invoke();
         }
 
         #endregion

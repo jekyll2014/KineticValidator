@@ -1,6 +1,4 @@
-﻿using KineticValidator.Properties;
-
-namespace KineticValidator
+﻿namespace JsonEditorForm
 {
     partial class JsonViewer
     {
@@ -106,7 +104,7 @@ namespace KineticValidator
             this.BtnCloseSearch.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.BtnCloseSearch.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.BtnCloseSearch.ForeColor = System.Drawing.Color.White;
-            this.BtnCloseSearch.Image = Resources.BtnCloseSearch_Image;
+            this.BtnCloseSearch.Image = ((System.Drawing.Image)(resources.GetObject("BtnCloseSearch.Image")));
             this.BtnCloseSearch.Location = new System.Drawing.Point(262, 4);
             this.BtnCloseSearch.Margin = new System.Windows.Forms.Padding(3, 4, 3, 4);
             this.BtnCloseSearch.Name = "BtnCloseSearch";
@@ -121,7 +119,7 @@ namespace KineticValidator
             this.BtnNextSearch.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.BtnNextSearch.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.BtnNextSearch.ForeColor = System.Drawing.Color.White;
-            this.BtnNextSearch.Image = Resources.BtnNextSearch_Image;
+            this.BtnNextSearch.Image = ((System.Drawing.Image)(resources.GetObject("BtnNextSearch.Image")));
             this.BtnNextSearch.Location = new System.Drawing.Point(236, 4);
             this.BtnNextSearch.Margin = new System.Windows.Forms.Padding(3, 4, 3, 4);
             this.BtnNextSearch.Name = "BtnNextSearch";
@@ -136,7 +134,7 @@ namespace KineticValidator
             this.BtnPrevSearch.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.BtnPrevSearch.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.BtnPrevSearch.ForeColor = System.Drawing.Color.White;
-            this.BtnPrevSearch.Image = Resources.BtnPrevSearch_Image;
+            this.BtnPrevSearch.Image = ((System.Drawing.Image)(resources.GetObject("BtnPrevSearch.Image")));
             this.BtnPrevSearch.Location = new System.Drawing.Point(205, 4);
             this.BtnPrevSearch.Margin = new System.Windows.Forms.Padding(3, 4, 3, 4);
             this.BtnPrevSearch.Name = "BtnPrevSearch";
@@ -148,7 +146,7 @@ namespace KineticValidator
             // 
             // TxtSearch
             // 
-            this.TxtSearch.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left)
+            this.TxtSearch.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
             this.TxtSearch.BorderStyle = System.Windows.Forms.BorderStyle.None;
             this.TxtSearch.Font = new System.Drawing.Font("Segoe UI", 13.8F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));

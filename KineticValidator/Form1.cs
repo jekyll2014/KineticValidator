@@ -14,7 +14,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-using JsonPathParserLib;
+using JsonEditorForm;
 
 using KineticValidator.Properties;
 
@@ -535,6 +535,7 @@ namespace KineticValidator
                     .ToString())
                 && row.Cells[ReportColumns.ValidationType.ToString()].Value
                     .ToString() != ValidationTypeEnum.Scheme.ToString())
+            {
                 for (var i = 0; i < 2; i++)
                 {
                     if (string.IsNullOrEmpty(fileTypes[i]))
@@ -588,8 +589,9 @@ namespace KineticValidator
 
 
                     if (lines[i] != -1)
-                        _editors[i].PermanentHighlightText(lines[i] + "] ");
+                        _editors[i].HighlightText(lines[i] + "] ");
                 }
+            }
             // if click to any column except LineID - open original file
             else
             {
@@ -643,17 +645,12 @@ namespace KineticValidator
                         _editors[i].Height = _editorPosition[i].WinH;
                     }
 
-                    if (TryGetPositionByPathStr(_editors[i].EditorText, paths[i], out var startPos, out var endPos))
+                    if (!_editors[i].HighlightPathJson(paths[i]))
                     {
-                        _editors[i].PermanentHighlight(startPos, endPos + 1);
-                    }
-                    else if (lineNumbers[i] != -1)
-                    {
-                        _editors[i].PermanentHighlightLines(lineNumbers[i] - 1, 0);
-                    }
-                    else if (startPositions[i] != -1 && endPositions[i] != -1)
-                    {
-                        _editors[i].PermanentHighlight(startPositions[i], endPositions[i] + 1);
+                        if (!_editors[i].HighlightLines(lineNumbers[i] - 1, 0))
+                        {
+                            _editors[i].HighlightPosition(startPositions[i], endPositions[i] + 1);
+                        }
                     }
                 }
             }
@@ -1881,30 +1878,6 @@ namespace KineticValidator
             // Console app
             else
                 Environment.Exit(1);
-        }
-
-        private bool TryGetPositionByPathStr(string json, string path, out int startPos, out int endPos)
-        {
-            startPos = -1;
-            endPos = -1;
-
-            var parcer = new JsonPathParser
-            {
-                TrimComplexValues = false,
-                SaveAllValues = false,
-                RootName = "",
-                JsonPathDivider = '.',
-                FastSearch = false
-            };
-
-            var pathItem = parcer.SearchPath(json, "." + path);
-
-            if (pathItem == null)
-                return false;
-
-            startPos = pathItem.StartPosition;
-            endPos = pathItem.EndPosition;
-            return true;
         }
 
         private void VsCodeOpenFile(string command)
