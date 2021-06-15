@@ -935,13 +935,13 @@ namespace JsonEditorForm
             var parcer = new JsonPathParser
             {
                 TrimComplexValues = false,
-                SaveAllValues = false,
+                SaveComplexValues = false,
                 RootName = "",
                 JsonPathDivider = '.',
-                FastSearch = false
+                SearchStartOnly = false
             };
 
-            var pathItem = parcer.SearchPath(_textArea.Text, "." + path);
+            var pathItem = parcer.SearchJsonPath(_textArea.Text, "." + path);
 
             if (pathItem == null)
                 return false;
@@ -1012,13 +1012,13 @@ namespace JsonEditorForm
             var parcer = new JsonPathParser
             {
                 TrimComplexValues = false,
-                SaveAllValues = false,
+                SaveComplexValues = false,
                 RootName = "",
                 JsonPathDivider = '.',
-                FastSearch = false
+                SearchStartOnly = false
             };
 
-            var pathItem = parcer.SearchPath(_textArea.Text, "." + path);
+            var pathItem = parcer.SearchJsonPath(_textArea.Text, "." + path);
 
             if (pathItem == null)
                 return false;

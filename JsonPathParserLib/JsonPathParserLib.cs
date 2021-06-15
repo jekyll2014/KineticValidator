@@ -76,10 +76,10 @@ namespace JsonPathParserLib
         private string _searchPath;
 
         public bool TrimComplexValues { get => this._trimComplexValues; set => this._trimComplexValues = value; }
-        public bool SaveAllValues { get => this._saveAllValues; set => this._saveAllValues = value; }
+        public bool SaveComplexValues { get => this._saveAllValues; set => this._saveAllValues = value; }
         public char JsonPathDivider { get => this._jsonPathDivider; set => this._jsonPathDivider = value; }
         public string RootName { get => this._rootName; set => this._rootName = value; }
-        public bool FastSearch { get => this._fastSearch; set => this._fastSearch = value; }
+        public bool SearchStartOnly { get => this._fastSearch; set => this._fastSearch = value; }
 
         public IEnumerable<ParsedProperty> ParseJsonToPathList(string json, out int endPosition, out bool errorFound)
         {
@@ -145,7 +145,7 @@ namespace JsonPathParserLib
             return StartParser(json, out var _, out var _);
         }
 
-        public ParsedProperty SearchPath(string json, string path)
+        public ParsedProperty SearchJsonPath(string json, string path)
         {
             _searchMode = true;
             _searchPath = path;
@@ -155,6 +155,14 @@ namespace JsonPathParserLib
                 return null;
 
             return items?.Where(n => n.Path == path).FirstOrDefault();
+        }
+
+        public bool GetLinesNumber(string json, int startPosition, int endPosition, out int startLine, out int endLine)
+        {
+            startLine = CountLinesFast(json, 0, startPosition);
+            endLine = startLine + CountLinesFast(json, startPosition, endPosition);
+
+            return true;
         }
 
         private int FindStartOfNextToken(int pos, out PropertyType foundObjectType)
@@ -875,6 +883,50 @@ namespace JsonPathParserLib
             }
 
             return arrayText.Substring(startPosition + 1, endPosition - startPosition - 1).Trim();
+        }
+
+        // fool-proof
+        public static int CountLines(string text, int startIndex, int endIndex)
+        {
+            if (startIndex >= text.Length)
+                return -1;
+
+            if (startIndex > endIndex)
+            {
+                var n = startIndex;
+                startIndex = endIndex;
+                endIndex = n;
+            }
+
+            if (endIndex >= text.Length)
+                endIndex = text.Length;
+
+            var linesCount = 0;
+            for (; startIndex < endIndex; startIndex++)
+            {
+                if (text[startIndex] != '\r' && text[startIndex] != '\n')
+                    continue;
+
+                linesCount++;
+                if (startIndex < endIndex - 1
+                    && text[startIndex] != text[startIndex + 1]
+                    && (text[startIndex + 1] == '\r' || text[startIndex + 1] == '\n'))
+                    startIndex++;
+            }
+
+            return linesCount;
+        }
+
+        static int CountLinesFast(string s, int startIndex, int endIndex)
+        {
+            int count = 0;
+            while ((startIndex = s.IndexOf('\n', startIndex)) != -1
+                && startIndex < endIndex)
+            {
+                count++;
+                startIndex++;
+            }
+            return count;
         }
     }
 }

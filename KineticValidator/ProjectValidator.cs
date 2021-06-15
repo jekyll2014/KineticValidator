@@ -671,7 +671,7 @@ namespace KineticValidator
                 var parcer = new JsonPathParser
                 {
                     TrimComplexValues = false,
-                    SaveAllValues = false,
+                    SaveComplexValues = false,
                     RootName = "",
                     JsonPathDivider = '.',
                 };
