@@ -4,7 +4,7 @@
 using System;
 using System.Windows.Forms;
 
-namespace ScintillaNETviewer.Utils
+namespace JsonEditorForm
 {
     internal class HotKeyManager
     {

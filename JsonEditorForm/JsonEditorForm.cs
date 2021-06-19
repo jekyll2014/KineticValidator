@@ -10,8 +10,6 @@ using JsonPathParserLib;
 
 using ScintillaNET;
 
-using ScintillaNETviewer.Utils;
-
 namespace JsonEditorForm
 {
     public partial class JsonViewer : Form
@@ -59,7 +57,7 @@ namespace JsonEditorForm
         private string _fileName = "";
         public bool SingleLineBrackets = false;
         private bool _multipleSearchActive;
-        private bool _textChanged = false;
+        private bool _textChanged;
 
         public string EditorText
         {

@@ -769,7 +769,7 @@ namespace KineticValidator
                 {
                     result.DataSetName = dataSetName;
                     Dictionary<string, string[]> tables = null;
-                    dataSets?.TryGetValue(svcName, out tables);
+                    dataSets.TryGetValue(svcName, out tables);
 
                     if (tables != null && tables.ContainsKey(tableName))
                     {
@@ -1305,7 +1305,8 @@ namespace KineticValidator
                     && n.FileType == KineticContentType.Strings
                     && n.Parent == "strings"
                     && !string.IsNullOrEmpty(n.Value)
-                    && !string.IsNullOrEmpty(n.Name));
+                    && !string.IsNullOrEmpty(n.Name))
+                .ToArray();
 
             var missedStringsList = _jsonPropertiesCollection
                 .Where(n =>

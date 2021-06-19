@@ -1117,7 +1117,7 @@ namespace KineticValidator
                         if (arrayPath == arrayName && _fileTypes.Any(n => n.PropertyTypeName == arrayName))
                         {
                             fileType = _fileTypes
-                                .FirstOrDefault(n => n.PropertyTypeName == arrayName).FileType;
+                                .FirstOrDefault(n => n.PropertyTypeName == arrayName)?.FileType ?? KineticContentType.Unknown;
                         }
                     }
 
@@ -1126,8 +1126,7 @@ namespace KineticValidator
                     var name = jProperty.Name;
 
                     var lineInfo = (IJsonLineInfo)jProperty;
-                    var lineNumber = -1;
-                    lineNumber = ((IJsonLineInfo)jProperty).LineNumber;
+                    var lineNumber = ((IJsonLineInfo)jProperty).LineNumber;
 
                     if (jValue is JValue jPropertyValue)
                     {
@@ -1246,7 +1245,7 @@ namespace KineticValidator
                     if (_fileTypes.Any(n => n.PropertyTypeName == name) && jsonPath.StartsWith(ImportTagName))
                     {
                         var newFileType = _fileTypes
-                            .FirstOrDefault(n => n.PropertyTypeName == name).FileType;
+                            .FirstOrDefault(n => n.PropertyTypeName == name)?.FileType ?? KineticContentType.Unknown;
                         if (fileType != newFileType)
                         {
                             if (fileType != KineticContentType.Unknown && newFileType != KineticContentType.Patch)
