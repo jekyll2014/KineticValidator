@@ -12,8 +12,11 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 
 using JsonPathParserLib;
+
+using Newtonsoft.Json.Linq;
 
 using NJsonSchema;
 using NJsonSchema.Validation;
@@ -46,7 +49,7 @@ namespace KineticValidator
         private static FolderType _folderType;
 
         //only set
-        private static ConcurrentDictionary<string, string> _processedFilesList;
+        private static ConcurrentDictionary<string, string> _processedFilesList; // file name / schema URL
         private static IEnumerable<JsonProperty> _jsonPropertiesCollection;
         private static IEnumerable<ReportItem> _runValidationReportsCollection;
         private static IEnumerable<ReportItem> _deserializeFileReportsCollection;
@@ -55,7 +58,7 @@ namespace KineticValidator
         internal static Dictionary<string, Func<string, IEnumerable<ReportItem>>> ValidatorsList =>
             new Dictionary<string, Func<string, IEnumerable<ReportItem>>>
             {
-                                {"File list validation", RunValidation},
+                {"File list validation", RunValidation},
                 {"Serialization validation", DeserializeFile},
                 {"JSON parser validation", ParseJsonObject},
                 {"Schema validation", SchemaValidation},
@@ -93,28 +96,39 @@ namespace KineticValidator
                 {"Missing searches", MissingSearches},
                 {"JavaScript code", JsCode},
                 {"JS #_trans.dataView('DataView').count_#", JsDataViewCount},
-                {"Missing layout id's", MissingLayoutIds},
-                {"Incorrect layout id's", IncorrectLayoutIds},
-                {"Incorrect dataview-condition", IncorrectDvConditionViewName},
-                {"Incorrect tab links", IncorrectTabIds},
+                {"Incorrect dataview-condition's", IncorrectDvConditionViewName},
                 {"Incorrect REST calls", IncorrectRestCalls},
+                //{"Incorrect field names", IncorrectFieldUsages},
+                {"Missing layout id's", MissingLayoutIds},
+                {"Incorrect event expressions", IncorrectEventExpression},
+                {"Incorrect rule conditions", IncorrectRuleConditions},
+                // questionable validations
+                {"Incorrect layout id's", IncorrectLayoutIds},
+                {"Incorrect tab links", IncorrectTabIds},
                 {"Duplicate GUID's", DuplicateGuiDs}
             };
 
         //cached data
-        private static Dictionary<string, string> _patchValues;
+        private static Dictionary<string, string> _patchValues; // name / value
         private static ConcurrentDictionary<string, List<ParsedProperty>> _parsedFiles = new ConcurrentDictionary<string, List<ParsedProperty>>();
         private static volatile bool _allFieldsPatched;
 
         //global cache
         private static readonly ConcurrentDictionary<string, string> SchemaList =
-            new ConcurrentDictionary<string, string>();
+            new ConcurrentDictionary<string, string>(); // schema URL / schema text
 
         private static readonly ConcurrentDictionary<string, Dictionary<string, string[]>> KnownServices =
-            new ConcurrentDictionary<string, Dictionary<string, string[]>>();
+            new ConcurrentDictionary<string, Dictionary<string, string[]>>(); // svcName / [methodName, parameters]
+
+        private class KineticDataSet
+        {
+            public string svcName = "";
+            public string dataSetName = "";
+            public Dictionary<string, List<string>> dataTables = new Dictionary<string, List<string>>();
+        }
 
         private static readonly ConcurrentDictionary<string, Dictionary<string, Dictionary<string, string[]>>>
-            KnownDataSets = new ConcurrentDictionary<string, Dictionary<string, Dictionary<string, string[]>>>();
+            KnownDataSets = new ConcurrentDictionary<string, Dictionary<string, Dictionary<string, string[]>>>(); // svcName / [dataSet, [datatables, fields]]
 
         internal static void Initialize(ProcessConfiguration processConfiguration,
             ProjectConfiguration projectConfiguration,
@@ -515,7 +529,7 @@ namespace KineticValidator
                 }
                 else
                 {
-                    var newReportList = errorList?.Select(schemaError => new ReportItem
+                    var newReportList = errorList.Select(schemaError => new ReportItem
                     {
                         ProjectName = projectName,
                         FullFileName = fullFileName,
@@ -527,7 +541,7 @@ namespace KineticValidator
                         Severity = ImportanceEnum.Error.ToString(),
                         Source = "ValidateFileSchema"
                     }).ToList();
-                    if (newReportList != null && newReportList.Any())
+                    if (newReportList.Any())
                         report.AddRange(newReportList);
                 }
             }
@@ -750,6 +764,9 @@ namespace KineticValidator
 
         private struct RestDataSetInfo
         {
+            public string KineticViewName;
+            public string KineticDataSetName;
+            public string KineticDataTableName;
             public string SvcName;
             public string DataSetName;
             public string TableName;
@@ -867,6 +884,337 @@ namespace KineticValidator
             } while (!allReplaced);
 
             return patchValues;
+        }
+
+        private enum TokenType
+        {
+            TextField,
+            ValueField,
+            Operator,
+            BracketOpen,
+            BracketClose,
+        }
+
+        private enum ExpressionErrorCode
+        {
+            NoProblem,
+            IncorrectOperator,
+            IncompleteExpression,
+            MissingValueField,
+            MissingOperator,
+            InconsistentBrackets,
+            InconsistentValueFields
+        }
+
+        private class ExpressionToken
+        {
+            public TokenType Type;
+            public string Value;
+        }
+
+        private static ExpressionErrorCode IsExpressionValid(string expression, out List<ExpressionToken> tokens, bool sqlType = false)
+        {
+            tokens = new List<ExpressionToken>();
+
+            expression = expression?.Trim().ToLower();
+
+            if (string.IsNullOrEmpty(expression)) return ExpressionErrorCode.NoProblem;
+
+            var operators = new[] { "===", "!==", "==", "!=", "&&", "||", "<=", ">=", "<", ">", "!", "=" };
+            var postProcessOperators = new[] { "and", "not", "or" };
+            if (sqlType)
+            {
+                operators = new[] { "<>", "<=", ">=", "=", "<", ">" };
+            }
+
+            var currentToken = new ExpressionToken
+            {
+                Value = "",
+                Type = TokenType.ValueField
+            };
+            var currentChar = ' ';
+            var txtFlag = false;
+            var jsFlag = false;
+            for (var pos = 0; pos < expression.Length; pos++)
+            {
+                currentChar = expression[pos];
+
+                // skip spaces except inside text fields
+                if (!txtFlag && !jsFlag && currentChar == ' ')
+                {
+                    if (!string.IsNullOrEmpty(currentToken.Value))
+                        tokens.Add(currentToken);
+
+                    currentToken = new ExpressionToken
+                    {
+                        Value = "",
+                        Type = TokenType.ValueField
+                    };
+                    continue;
+                }
+
+                // start of text field
+                if (!txtFlag && !jsFlag && currentChar == '\'')
+                {
+                    txtFlag = true;
+
+                    if (!string.IsNullOrEmpty(currentToken.Value))
+                        tokens.Add(currentToken);
+
+                    currentToken = new ExpressionToken
+                    {
+                        Value = currentChar.ToString(),
+                        Type = TokenType.TextField
+                    };
+
+                    continue;
+                }
+
+                // passing through text field
+                if (txtFlag)
+                {
+                    // end of text field
+                    if (currentChar == '\'')
+                    {
+                        currentToken.Value += currentChar;
+                        tokens.Add(currentToken);
+                        txtFlag = false;
+
+                        currentToken = new ExpressionToken
+                        {
+                            Value = "",
+                            Type = TokenType.ValueField
+                        };
+                    }
+                    else
+                    {
+                        currentToken.Value += currentChar;
+                    }
+
+                    continue;
+                }
+
+                // javascript insert start
+                if (!jsFlag && currentChar == '#' && pos + 1 < expression.Length && expression[pos + 1] == '_')
+                {
+                    jsFlag = true;
+
+                    if (!string.IsNullOrEmpty(currentToken.Value))
+                        tokens.Add(currentToken);
+
+                    currentToken = new ExpressionToken
+                    {
+                        Value = "#_",
+                        Type = TokenType.TextField
+                    };
+                    pos++;
+                    continue;
+                }
+
+                // passing through javascript
+                if (jsFlag)
+                {
+                    // end of javascript insert
+                    if (currentChar == '_' && pos + 1 < expression.Length && expression[pos + 1] == '#')
+                    {
+                        currentToken.Value += "_#";
+                        pos++;
+                        tokens.Add(currentToken);
+                        jsFlag = false;
+
+                        currentToken = new ExpressionToken
+                        {
+                            Value = "",
+                            Type = TokenType.ValueField
+                        };
+                    }
+                    else
+                    {
+                        currentToken.Value += currentChar;
+                    }
+
+                    continue;
+                }
+
+                // bracket opening
+                if (currentChar == '(')
+                {
+                    if (!string.IsNullOrEmpty(currentToken.Value))
+                        tokens.Add(currentToken);
+
+                    currentToken = new ExpressionToken
+                    {
+                        Value = currentChar.ToString(),
+                        Type = TokenType.BracketOpen
+                    };
+                    tokens.Add(currentToken);
+                    currentToken = new ExpressionToken
+                    {
+                        Value = "",
+                        Type = TokenType.ValueField
+                    };
+
+                    continue;
+                }
+
+                // bracket closing
+                if (currentChar == ')')
+                {
+                    if (!string.IsNullOrEmpty(currentToken.Value))
+                        tokens.Add(currentToken);
+
+                    currentToken = new ExpressionToken
+                    {
+                        Value = currentChar.ToString(),
+                        Type = TokenType.BracketClose
+                    };
+                    tokens.Add(currentToken);
+                    currentToken = new ExpressionToken
+                    {
+                        Value = "",
+                        Type = TokenType.ValueField
+                    };
+
+                    continue;
+                }
+
+                // operator
+                if (operators.Any(n => n[0] == currentChar))
+                {
+                    if (!string.IsNullOrEmpty(currentToken.Value))
+                        tokens.Add(currentToken);
+
+                    currentToken = new ExpressionToken
+                    {
+                        Type = TokenType.Operator
+                    };
+
+                    foreach (var operatorStr in operators)
+                    {
+                        if (pos + operatorStr.Length <= expression.Length)
+                        {
+                            var newValue = expression.Substring(pos, operatorStr.Length);
+                            if (operatorStr == newValue)
+                            {
+                                currentToken.Value = newValue;
+                                pos += operatorStr.Length - 1;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (string.IsNullOrEmpty(currentToken.Value)) return ExpressionErrorCode.IncorrectOperator;
+
+                    tokens.Add(currentToken);
+                    currentToken = new ExpressionToken
+                    {
+                        Value = "",
+                        Type = TokenType.ValueField
+                    };
+
+                    continue;
+                }
+
+                // field name
+                currentToken.Value += currentChar;
+            }
+
+            if (!string.IsNullOrEmpty(currentToken.Value))
+                tokens.Add(currentToken);
+
+            if (sqlType)
+            {
+                foreach (var t in tokens)
+                {
+                    if (postProcessOperators.Contains(t.Value)) t.Type = TokenType.Operator;
+                }
+            }
+
+            // expression can't end with open bracket or operator or opened text/js field
+            if (currentToken.Type == TokenType.BracketOpen
+                || currentToken.Type == TokenType.Operator
+                || txtFlag
+                || jsFlag)
+            {
+                return ExpressionErrorCode.IncompleteExpression;
+            }
+
+            // expression can't start with operator or closing bracket
+            if (tokens[0].Type == TokenType.BracketClose
+                || tokens[0].Type == TokenType.Operator)
+            {
+                if (!sqlType && tokens[0].Value != "!") return ExpressionErrorCode.IncompleteExpression;
+                if (sqlType && tokens[0].Value != "not") return ExpressionErrorCode.IncompleteExpression;
+            }
+
+            // check order of fields and operations
+            for (var i = 1; i < tokens.Count; i++)
+            {
+                var currentT = tokens[i];
+                var previousT = tokens[i - 1];
+
+                // no operators can come together
+                if (currentT.Type == TokenType.Operator && previousT.Type == TokenType.Operator)
+                {
+                    if (sqlType && currentT.Value != "not") return ExpressionErrorCode.MissingValueField;
+                    if (!sqlType && currentT.Value != "!") return ExpressionErrorCode.MissingValueField;
+                }
+
+                // no fields can come together
+                if ((currentT.Type == TokenType.TextField || currentT.Type == TokenType.ValueField)
+                    && (previousT.Type == TokenType.TextField || previousT.Type == TokenType.ValueField))
+                {
+                    if (!sqlType && currentT.Value[0] != '.') return ExpressionErrorCode.MissingOperator;
+                }
+
+                // no field can come after closing bracket
+                if (previousT.Type == TokenType.BracketClose && (currentT.Type == TokenType.TextField || currentT.Type == TokenType.ValueField))
+                {
+                    if (!sqlType && currentT.Value[0] != '.') return ExpressionErrorCode.MissingOperator;
+                }
+
+                // no field can come before opening bracket
+                if ((previousT.Type == TokenType.TextField || previousT.Type == TokenType.ValueField) && currentT.Type == TokenType.BracketOpen)
+                {
+                    if (!sqlType && !previousT.Value.Contains('.')) return ExpressionErrorCode.MissingOperator;
+                }
+            }
+
+            // all brackets should be closed - not really needed because of the next validation
+            if (tokens.Count(n => n.Type == TokenType.BracketOpen) !=
+                tokens.Count(n => n.Type == TokenType.BracketClose))
+            {
+                return ExpressionErrorCode.InconsistentBrackets;
+            }
+
+            // brackets order must be followed
+            var counter = 0;
+            foreach (var t in tokens)
+            {
+                if (t.Type == TokenType.BracketOpen) counter++;
+                else if (t.Type == TokenType.BracketClose) counter--;
+
+                if (counter < 0) return ExpressionErrorCode.InconsistentBrackets;
+            }
+
+            // both fields around the operator should be of same type (string/non-string)
+            if (!sqlType)
+            {
+                for (var i = 1; i < tokens.Count - 1; i++)
+                {
+                    var currentT = tokens[i];
+                    var previousT = tokens[i - 1];
+                    var nextT = tokens[i + 1];
+                    if (currentT.Type == TokenType.Operator
+                        && (previousT.Type == TokenType.TextField || previousT.Type == TokenType.ValueField)
+                        && (nextT.Type == TokenType.TextField || nextT.Type == TokenType.ValueField))
+                    {
+                        if (previousT.Type != nextT.Type) return ExpressionErrorCode.InconsistentValueFields;
+                    }
+                }
+            }
+
+            return ExpressionErrorCode.NoProblem;
         }
 
         #endregion
@@ -1716,6 +2064,7 @@ namespace KineticValidator
             return report;
         }
 
+        // rework
         private static IEnumerable<ReportItem> RedundantEvents(string methodName)
         {
             while (_patchAllFields && !_allFieldsPatched)
@@ -1730,26 +2079,26 @@ namespace KineticValidator
                     && !n.Shared
                     && !string.IsNullOrEmpty(n.Value));
 
-            return from id in idProjectList
-                   where !_jsonPropertiesCollection.Any(n =>
-                       n.ItemType == JsonItemType.Property && n.FullFileName == id.FullFileName &&
-                       n.ParentPath == id.ParentPath && n.Name == "trigger")
-                   where !_jsonPropertiesCollection.Any(n =>
-                       n.ItemType == JsonItemType.Property && n.FileType == KineticContentType.Events && n.Name != "id" &&
-                       n.Value == id.Value)
-                   select new ReportItem
-                   {
-                       ProjectName = _projectName,
-                       FullFileName = id.FullFileName,
-                       FileType = id.FileType.ToString(),
-                       LineId = id.LineId.ToString(),
-                       JsonPath = id.JsonPath,
-                       LineNumber = id.SourceLineNumber.ToString(),
-                       Message = $"Event id \"{id.Value}\" is not used in the project",
-                       ValidationType = ValidationTypeEnum.Logic.ToString(),
-                       Severity = ImportanceEnum.Warning.ToString(),
-                       Source = methodName
-                   };
+            foreach (var id in idProjectList)
+            {
+                if (!_jsonPropertiesCollection.Any(n => n.ItemType == JsonItemType.Property && n.FullFileName == id.FullFileName && n.ParentPath == id.ParentPath && n.Name == "trigger"))
+                {
+                    if (!_jsonPropertiesCollection.Any(n => n.ItemType == JsonItemType.Property && n.FileType == KineticContentType.Events && n.Name != "id" && n.Value == id.Value))
+                        yield return new ReportItem
+                        {
+                            ProjectName = _projectName,
+                            FullFileName = id.FullFileName,
+                            FileType = id.FileType.ToString(),
+                            LineId = id.LineId.ToString(),
+                            JsonPath = id.JsonPath,
+                            LineNumber = id.SourceLineNumber.ToString(),
+                            Message = $"Event id \"{id.Value}\" is not used in the project",
+                            ValidationType = ValidationTypeEnum.Logic.ToString(),
+                            Severity = ImportanceEnum.Warning.ToString(),
+                            Source = methodName
+                        };
+                }
+            }
         }
 
         private static IEnumerable<ReportItem> CallNonExistingEvents(string methodName)
@@ -1826,6 +2175,7 @@ namespace KineticValidator
             });
         }
 
+        // rework
         private static IEnumerable<ReportItem> RedundantDataViews(string methodName)
         {
             while (_patchAllFields && !_allFieldsPatched)
@@ -1840,23 +2190,23 @@ namespace KineticValidator
                     && n.Name == "id"
                     && !string.IsNullOrEmpty(n.Value));
 
-            return from viewResource in dataViewList
-                   where !_jsonPropertiesCollection.Any(n =>
-                       n.ItemType == JsonItemType.Property && n.FileType != KineticContentType.DataViews &&
-                       n.Value.Contains(viewResource.Value))
-                   select new ReportItem
-                   {
-                       ProjectName = _projectName,
-                       FullFileName = viewResource.FullFileName,
-                       FileType = viewResource.FileType.ToString(),
-                       LineId = viewResource.LineId.ToString(),
-                       JsonPath = viewResource.JsonPath,
-                       LineNumber = viewResource.SourceLineNumber.ToString(),
-                       Message = $"DataView \"{viewResource.Value}\" is not used in the project",
-                       ValidationType = ValidationTypeEnum.Logic.ToString(),
-                       Severity = ImportanceEnum.Warning.ToString(),
-                       Source = methodName
-                   };
+            return dataViewList
+                .Where(viewResource => !_jsonPropertiesCollection.Any(n =>
+                    n.ItemType == JsonItemType.Property && n.FileType != KineticContentType.DataViews &&
+                    n.Value.Contains(viewResource.Value)))
+                .Select(viewResource => new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = viewResource.FullFileName,
+                    FileType = viewResource.FileType.ToString(),
+                    LineId = viewResource.LineId.ToString(),
+                    JsonPath = viewResource.JsonPath,
+                    LineNumber = viewResource.SourceLineNumber.ToString(),
+                    Message = $"DataView \"{viewResource.Value}\" is not used in the project",
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Warning.ToString(),
+                    Source = methodName
+                });
         }
 
         private static IEnumerable<ReportItem> CallNonExistingDataViews(string methodName)
@@ -2003,6 +2353,7 @@ namespace KineticValidator
             return report;
         }
 
+        // rework
         private static IEnumerable<ReportItem> CallNonExistingDataTables(string methodName)
         {
             while (_patchAllFields && !_allFieldsPatched)
@@ -2020,11 +2371,8 @@ namespace KineticValidator
                 .ToArray();
 
             var report = new List<ReportItem>();
-            foreach (var property in _jsonPropertiesCollection)
+            foreach (var property in _jsonPropertiesCollection.Where(n => n.ItemType == JsonItemType.Property))
             {
-                if (property.ItemType != JsonItemType.Property)
-                    continue;
-
                 var usedDataTable = "";
 
                 if (property.FileType == KineticContentType.Events
@@ -2038,7 +2386,9 @@ namespace KineticValidator
                         && m.ParentPath == property.ParentPath
                         && m.Name == "type"
                         && m.Value == "DataTable"))
+                {
                     usedDataTable = property.Value;
+                }
 
                 if (string.IsNullOrEmpty(usedDataTable))
                     continue;
@@ -2501,74 +2851,6 @@ namespace KineticValidator
             });
         }
 
-        private static IEnumerable<ReportItem> MissingLayoutIds(string methodName)
-        {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
-            var layoutIdList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && n.FileType == KineticContentType.Layout
-                    && n.JsonDepth == 2
-                    && n.Name == "id");
-
-            return from idItem in layoutIdList
-                   let modelId = _jsonPropertiesCollection.Where(n =>
-                       n.FullFileName == idItem.FullFileName && n.ItemType == JsonItemType.Property &&
-                       n.FileType == KineticContentType.Layout && n.ParentPath == idItem.ParentPath + ".model" &&
-                       n.Name == "id").ToArray()
-                   where !modelId.Any()
-                   select new ReportItem
-                   {
-                       ProjectName = _projectName,
-                       FullFileName = idItem.FullFileName,
-                       Message = $"Layout control id=\"{idItem.Value}\" has no model id",
-                       FileType = idItem.FileType.ToString(),
-                       LineId = idItem.LineId.ToString(),
-                       JsonPath = idItem.JsonPath,
-                       LineNumber = idItem.SourceLineNumber.ToString(),
-                       ValidationType = ValidationTypeEnum.Logic.ToString(),
-                       Severity = ImportanceEnum.Error.ToString(),
-                       Source = methodName
-                   };
-        }
-
-        private static IEnumerable<ReportItem> IncorrectLayoutIds(string methodName)
-        {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
-            var layoutIdList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && n.FileType == KineticContentType.Layout
-                    && n.JsonDepth == 2
-                    && n.Name == "id");
-
-            return from idItem in layoutIdList
-                   let modelId = _jsonPropertiesCollection.Where(n =>
-                       n.FullFileName == idItem.FullFileName && n.ItemType == JsonItemType.Property &&
-                       n.FileType == KineticContentType.Layout && n.ParentPath == idItem.ParentPath + ".model" &&
-                       n.Name == "id").ToArray()
-                   where modelId.Any()
-                   where idItem.Value != modelId.First().Value
-                   select new ReportItem
-                   {
-                       ProjectName = _projectName,
-                       FullFileName = idItem.FullFileName + _splitChar + modelId.First().FullFileName,
-                       Message =
-                           $"Layout control id=\"{idItem.Value}\" doesn't match model id=\"{modelId.First().Value}\"",
-                       FileType = idItem.FileType.ToString() + _splitChar + modelId.First().FileType,
-                       LineId = idItem.LineId.ToString() + _splitChar + modelId.First().LineId,
-                       JsonPath = idItem.JsonPath + _splitChar + modelId.First().JsonPath,
-                       LineNumber = idItem.SourceLineNumber.ToString() + _splitChar + modelId.First().SourceLineNumber.ToString(),
-                       ValidationType = ValidationTypeEnum.Logic.ToString(),
-                       Severity = ImportanceEnum.Error.ToString(),
-                       Source = methodName
-                   };
-        }
-
         private static IEnumerable<ReportItem> IncorrectDvConditionViewName(string methodName)
         {
             while (_patchAllFields && !_allFieldsPatched)
@@ -2640,48 +2922,6 @@ namespace KineticValidator
             }
 
             return report;
-        }
-
-        private static IEnumerable<ReportItem> IncorrectTabIds(string methodName)
-        {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
-            var tabIdsList = _jsonPropertiesCollection
-                .Where(n =>
-                    !n.Shared
-                    && n.ItemType == JsonItemType.Property
-                    && n.FileType == KineticContentType.Layout
-                    && !string.IsNullOrEmpty(n.Value)
-                    && n.Name == "tabId").Select(n => n.Value).ToArray();
-
-            var tabStripsList = _jsonPropertiesCollection
-                .Where(n =>
-                    !n.Shared
-                    && n.ItemType == JsonItemType.Property
-                    && n.FileType == KineticContentType.Layout
-                    && n.Name == "sourceTypeId"
-                    && n.Value == "metafx-tabstrip");
-
-            return from tab in tabStripsList
-                   from item in _jsonPropertiesCollection.Where(n =>
-                       !n.Shared && n.FullFileName == tab.FullFileName && n.ItemType == JsonItemType.Property &&
-                       n.FileType == KineticContentType.Layout && n.JsonPath.Contains(tab.ParentPath + ".model.data") &&
-                       n.Name == "page" && !string.IsNullOrEmpty(n.Value))
-                   where !tabIdsList.Contains(item.Value)
-                   select new ReportItem
-                   {
-                       ProjectName = _projectName,
-                       FullFileName = item.FullFileName,
-                       Message = $"Inexistent tab link: {item.Value}",
-                       FileType = item.FileType.ToString(),
-                       LineId = item.LineId.ToString(),
-                       JsonPath = item.JsonPath,
-                       LineNumber = item.SourceLineNumber.ToString(),
-                       ValidationType = ValidationTypeEnum.Logic.ToString(),
-                       Severity = ImportanceEnum.Error.ToString(),
-                       Source = methodName
-                   };
         }
 
         private static IEnumerable<ReportItem> IncorrectRestCalls(string methodName)
@@ -2903,6 +3143,302 @@ namespace KineticValidator
             return report;
         }
 
+        private static IEnumerable<ReportItem> IncorrectFieldUsages(string methodName)
+        {
+            while (_patchAllFields && !_allFieldsPatched)
+                Thread.Sleep(1);
+
+            var report = new List<ReportItem>();
+
+            var svcList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && (n.FileType == KineticContentType.Events || n.FileType == KineticContentType.Patch || n.FileType == KineticContentType.Layout)
+                    && n.Name == "svc"
+                    && !string.IsNullOrEmpty(n.Value))
+                .Select(n => n.Value)
+                .Distinct();
+
+            foreach (var svc in svcList)
+            {
+                GetRestServiceDataSets(svc,"","", _serverAssembliesPath);
+            }
+
+            var dataViewList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType == KineticContentType.DataViews
+                    && n.Parent == "dataviews"
+                    && n.Name == "id"
+                    && !string.IsNullOrEmpty(n.Value));
+
+            var dataSetList = new List<KineticDataSet>();
+            foreach(var KineticDataView in dataViewList)
+            {
+                var KineticTableName = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FullFileName == KineticDataView.FullFileName
+                    && n.JsonPath == KineticDataView.JsonPath.Replace(".id", ".table")
+                    && !string.IsNullOrEmpty(n.Value))
+                .FirstOrDefault()
+                .Value;
+
+                var KineticDataSetName = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FullFileName == KineticDataView.FullFileName
+                    && n.JsonPath == KineticDataView.JsonPath.Replace(".id", ".datasetId")
+                    && !string.IsNullOrEmpty(n.Value))
+                .FirstOrDefault()
+                .Value;
+
+                var serverDataSetName = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FullFileName == KineticDataView.FullFileName
+                    && n.JsonPath == KineticDataView.JsonPath.Replace(".id", ".serverDataset")
+                    && !string.IsNullOrEmpty(n.Value))
+                .FirstOrDefault()
+                .Value;
+
+                var serverTableName = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FullFileName == KineticDataView.FullFileName
+                    && n.JsonPath == KineticDataView.JsonPath.Replace(".id", ".serverTable")
+                    && !string.IsNullOrEmpty(n.Value))
+                .FirstOrDefault()
+                .Value;
+
+                var additionalColumnsList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FullFileName == KineticDataView.FullFileName
+                    && n.JsonPath == KineticDataView.JsonPath.Replace(".id", ".additionalColumns")
+                    && !string.IsNullOrEmpty(n.Value))
+                .Select(n=>n.Value);
+
+                var tmpDataSetList = KnownDataSets.Select(n => n.Value);
+
+                var serverDataSetList = tmpDataSetList.Where(n => n.ContainsKey(serverDataSetName));
+                
+                var serverTable = serverDataSetList.Where(n => n.ContainsKey(serverTableName));
+
+                /*foreach(var item in serverTable)
+                {
+                    dataSetList.Add(new KineticDataSet
+                    {
+                        dataSetName = item.FirstOrDefault().Key, dataTables = new Dictionary<string, List<string>>(item.FirstOrDefault().Value.)
+                    {
+                            
+                        //key item.FirstOrDefault().Value
+                    }
+                    });
+                }*/
+            }
+
+            return report;
+        }
+
+        private static IEnumerable<ReportItem> MissingLayoutIds(string methodName)
+        {
+            while (_patchAllFields && !_allFieldsPatched)
+                Thread.Sleep(1);
+
+            var layoutIdList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType == KineticContentType.Layout
+                    && n.JsonDepth == 2
+                    && n.Name == "id");
+
+            return layoutIdList
+                .Select(idItem => new
+                {
+                    idItem,
+                    modelId = _jsonPropertiesCollection.Where(n =>
+                            n.FullFileName == idItem.FullFileName && n.ItemType == JsonItemType.Property &&
+                            n.FileType == KineticContentType.Layout && n.ParentPath == idItem.ParentPath + ".model" &&
+                            n.Name == "id")
+                        .ToArray()
+                })
+                .Where(@t => !@t.modelId.Any())
+                .Select(@t => new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = @t.idItem.FullFileName,
+                    Message = $"Layout control id=\"{@t.idItem.Value}\" has no model id",
+                    FileType = @t.idItem.FileType.ToString(),
+                    LineId = @t.idItem.LineId.ToString(),
+                    JsonPath = @t.idItem.JsonPath,
+                    LineNumber = @t.idItem.SourceLineNumber.ToString(),
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Error.ToString(),
+                    Source = methodName
+                });
+        }
+
+        private static IEnumerable<ReportItem> IncorrectEventExpression(string methodName)
+        {
+            while (_patchAllFields && !_allFieldsPatched)
+                Thread.Sleep(1);
+
+            var expressionList = _jsonPropertiesCollection
+                .Where(n =>
+                    !n.Shared
+                    && n.ItemType == JsonItemType.Property
+                    && n.FileType == KineticContentType.Events
+                    && n.Name == "expression"
+                    && n.Parent == "param"
+                    && _jsonPropertiesCollection.Any(m =>
+                        m.FullFileName == n.FullFileName
+                        && m.JsonPath == n.ParentPath.Replace(".param", ".type")
+                        && m.Value == "condition"));
+
+            var report = new List<ReportItem>();
+            foreach (var expression in expressionList)
+            {
+                var result = IsExpressionValid(expression.Value, out _);
+                if (result != ExpressionErrorCode.NoProblem)
+                {
+                    report.Add(new ReportItem
+                    {
+                        ProjectName = _projectName,
+                        FullFileName = expression.FullFileName,
+                        Message = $"Expression incorrect [{result}]: \"{expression.Value}\"",
+                        FileType = expression.FileType.ToString(),
+                        LineId = expression.LineId.ToString(),
+                        JsonPath = expression.JsonPath,
+                        LineNumber = expression.SourceLineNumber.ToString(),
+                        ValidationType = ValidationTypeEnum.Logic.ToString(),
+                        Severity = ImportanceEnum.Error.ToString(),
+                        Source = methodName
+                    });
+                }
+            }
+
+            return report;
+        }
+
+        private static IEnumerable<ReportItem> IncorrectRuleConditions(string methodName)
+        {
+            while (_patchAllFields && !_allFieldsPatched)
+                Thread.Sleep(1);
+
+            var conditionList = _jsonPropertiesCollection
+                .Where(n =>
+                    !n.Shared
+                    && n.ItemType == JsonItemType.Property
+                    && n.FileType == KineticContentType.Rules
+                    && n.Name == "condition"
+                    && n.Parent == "rules");
+
+            var report = new List<ReportItem>();
+            foreach (var condition in conditionList)
+            {
+                var result = IsExpressionValid(condition.Value, out _, true);
+                if (result != ExpressionErrorCode.NoProblem)
+                {
+                    report.Add(new ReportItem
+                    {
+                        ProjectName = _projectName,
+                        FullFileName = condition.FullFileName,
+                        Message = $"Condition incorrect [{result}]: \"{condition.Value}\"",
+                        FileType = condition.FileType.ToString(),
+                        LineId = condition.LineId.ToString(),
+                        JsonPath = condition.JsonPath,
+                        LineNumber = condition.SourceLineNumber.ToString(),
+                        ValidationType = ValidationTypeEnum.Logic.ToString(),
+                        Severity = ImportanceEnum.Error.ToString(),
+                        Source = methodName
+                    });
+                }
+            }
+
+            return report;
+        }
+
+        // is it really incorrect?
+        private static IEnumerable<ReportItem> IncorrectLayoutIds(string methodName)
+        {
+            while (_patchAllFields && !_allFieldsPatched)
+                Thread.Sleep(1);
+
+            var layoutIdList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType == KineticContentType.Layout
+                    && n.JsonDepth == 2
+                    && n.Name == "id");
+
+            return from idItem in layoutIdList
+                   let modelId = _jsonPropertiesCollection.Where(n =>
+                       n.FullFileName == idItem.FullFileName && n.ItemType == JsonItemType.Property &&
+                       n.FileType == KineticContentType.Layout && n.ParentPath == idItem.ParentPath + ".model" &&
+                       n.Name == "id").ToArray()
+                   where modelId.Any()
+                   where idItem.Value != modelId.First().Value
+                   select new ReportItem
+                   {
+                       ProjectName = _projectName,
+                       FullFileName = idItem.FullFileName + _splitChar + modelId.First().FullFileName,
+                       Message =
+                           $"Layout control id=\"{idItem.Value}\" doesn't match model id=\"{modelId.First().Value}\"",
+                       FileType = idItem.FileType.ToString() + _splitChar + modelId.First().FileType,
+                       LineId = idItem.LineId.ToString() + _splitChar + modelId.First().LineId,
+                       JsonPath = idItem.JsonPath + _splitChar + modelId.First().JsonPath,
+                       LineNumber = idItem.SourceLineNumber.ToString() + _splitChar + modelId.First().SourceLineNumber.ToString(),
+                       ValidationType = ValidationTypeEnum.Logic.ToString(),
+                       Severity = ImportanceEnum.Error.ToString(),
+                       Source = methodName
+                   };
+        }
+
+        // is it really incorrect?
+        private static IEnumerable<ReportItem> IncorrectTabIds(string methodName)
+        {
+            while (_patchAllFields && !_allFieldsPatched)
+                Thread.Sleep(1);
+
+            var tabIdsList = _jsonPropertiesCollection
+                .Where(n =>
+                    !n.Shared
+                    && n.ItemType == JsonItemType.Property
+                    && n.FileType == KineticContentType.Layout
+                    && !string.IsNullOrEmpty(n.Value)
+                    && n.Name == "tabId").Select(n => n.Value).ToArray();
+
+            var tabStripsList = _jsonPropertiesCollection
+                .Where(n =>
+                    !n.Shared
+                    && n.ItemType == JsonItemType.Property
+                    && n.FileType == KineticContentType.Layout
+                    && n.Name == "sourceTypeId"
+                    && n.Value == "metafx-tabstrip");
+
+            return from tab in tabStripsList
+                   from item in _jsonPropertiesCollection.Where(n =>
+                       !n.Shared && n.FullFileName == tab.FullFileName && n.ItemType == JsonItemType.Property &&
+                       n.FileType == KineticContentType.Layout && n.JsonPath.Contains(tab.ParentPath + ".model.data") &&
+                       n.Name == "page" && !string.IsNullOrEmpty(n.Value))
+                   where !tabIdsList.Contains(item.Value)
+                   select new ReportItem
+                   {
+                       ProjectName = _projectName,
+                       FullFileName = item.FullFileName,
+                       Message = $"Inexistent tab link: {item.Value}",
+                       FileType = item.FileType.ToString(),
+                       LineId = item.LineId.ToString(),
+                       JsonPath = item.JsonPath,
+                       LineNumber = item.SourceLineNumber.ToString(),
+                       ValidationType = ValidationTypeEnum.Logic.ToString(),
+                       Severity = ImportanceEnum.Error.ToString(),
+                       Source = methodName
+                   };
+        }
+
+        // is it really incorrect?
         private static IEnumerable<ReportItem> DuplicateGuiDs(string methodName)
         {
             while (_patchAllFields && !_allFieldsPatched)

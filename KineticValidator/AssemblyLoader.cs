@@ -13,7 +13,7 @@ namespace KineticValidator
         private Assembly _assembly;
         private Type _typeSafely;
         private bool _assemblyLoadRestrictions;
-        private Dictionary<string, string[]> _allMethodsInfo;
+        private Dictionary<string, string[]> _allMethodsInfo; // method / paremeters
         private Dictionary<string, Dictionary<string, string[]>> _allDataSetsInfo;
         public bool IsLoaded => !(_assembly == null);
 
@@ -49,10 +49,10 @@ namespace KineticValidator
             if (nameTokens.Length != 3) return fileName;
 
             // 1st token must be ["ERP","ICE"]
-            if (!new[] {"ERP", "ICE"}.Contains(nameTokens[0])) return fileName;
+            if (!new[] { "ERP", "ICE" }.Contains(nameTokens[0])) return fileName;
 
             // 2nd token must be ["BO,"LIB","PROC","RPT","SEC","WEB"]
-            if (!new[] {"BO", "LIB", "PROC", "RPT", "SEC", "WEB"}.Contains(nameTokens[1])) return fileName;
+            if (!new[] { "BO", "LIB", "PROC", "RPT", "SEC", "WEB" }.Contains(nameTokens[1])) return fileName;
 
             nameTokens[2] = nameTokens[2].Replace("SVC", "");
             fileName = nameTokens[0] + ".Contracts." + nameTokens[1] + "." + nameTokens[2] + ".dll";
@@ -64,10 +64,13 @@ namespace KineticValidator
         {
             var methods = GetMethodsSafely();
             var methodTree = new Dictionary<string, string[]>();
-            foreach (var method in methods)
+            if (methods != null)
             {
-                var parameters = GetParamsSafely(method);
-                methodTree.Add(method, parameters);
+                foreach (var method in methods)
+                {
+                    var parameters = GetParamsSafely(method);
+                    methodTree.Add(method, parameters);
+                }
             }
 
             return methodTree;
@@ -130,14 +133,12 @@ namespace KineticValidator
         {
             if (_allMethodsInfo == null) _allMethodsInfo = GetMethodTree();
 
-            return _allMethodsInfo?.Select(n => n.Key).ToArray();
+            return _allMethodsInfo.Select(n => n.Key).ToArray();
         }
 
         public string[] GetParameters(string methodName)
         {
             if (_allMethodsInfo == null) _allMethodsInfo = GetMethodTree();
-
-            if (_allMethodsInfo == null) return null;
 
             _allMethodsInfo.TryGetValue(methodName, out var methodTree);
             return methodTree?.ToArray();

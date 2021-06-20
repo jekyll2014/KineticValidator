@@ -16,6 +16,8 @@ using System.Windows.Forms;
 
 using JsonEditorForm;
 
+using JsonPathParserLib;
+
 using KineticValidator.Properties;
 
 using Newtonsoft.Json;
@@ -49,6 +51,9 @@ namespace KineticValidator
         private const string GlobalIgnoreFileName = "ignore.json";
         private const string ReportJsonFileName = "report.json";
         private const char SplitChar = ';';
+        private const char JsonPathDiv = '.';
+        private const string PreViewCaption = "[Preview] ";
+
 
         private static readonly string HelpString = "Usage: KineticValidator.exe [/i] [/s] [/t] [/h] projectDir"
                                                     + Environment.NewLine
@@ -431,229 +436,7 @@ namespace KineticValidator
             if (!(sender is DataGridView dataGrid) || e.RowIndex < 0 || e.ColumnIndex < 0)
                 return;
 
-            var row = dataGridView_report.Rows[e.RowIndex];
-            var files = new List<string> { "", "" };
-            var fileNames = row.Cells[ReportColumns.FullFileName.ToString()].Value
-                .ToString()
-                .Replace(Environment.NewLine, SplitChar.ToString())
-                .Split(SplitChar);
-            var n = 0;
-            foreach (var token in fileNames)
-            {
-                files[n] = token;
-                n++;
-            }
-
-            var paths = new List<string> { "", "" };
-            var pathIds = row.Cells[ReportColumns.JsonPath.ToString()].Value
-                .ToString()
-                .Replace(Environment.NewLine, SplitChar.ToString())
-                .Split(SplitChar);
-            n = 0;
-            foreach (var token in pathIds)
-            {
-                paths[n] = token;
-                n++;
-            }
-
-            var fileTypes = new List<string> { "", "" };
-            var fileTypeIds = row.Cells[ReportColumns.FileType.ToString()].Value
-                .ToString()
-                .Replace(Environment.NewLine, SplitChar.ToString())
-                .Split(SplitChar);
-            n = 0;
-            foreach (var token in fileTypeIds)
-            {
-                fileTypes[n] = GetSaveFileNameByType(token);
-                n++;
-            }
-
-            var lines = new List<int> { -1, -1 };
-            var lineIds = row.Cells[ReportColumns.LineId.ToString()].Value
-                .ToString()
-                .Replace(Environment.NewLine, SplitChar.ToString())
-                .Split(SplitChar);
-            n = 0;
-            foreach (var token in lineIds)
-            {
-                if (int.TryParse(token, out var line))
-                    lines[n] = line;
-                n++;
-            }
-
-            var lineNumbers = new List<int> { -1, -1 };
-            lineIds = row.Cells[ReportColumns.LineNumber.ToString()].Value
-                .ToString()
-                .Replace(Environment.NewLine, SplitChar.ToString())
-                .Split(SplitChar);
-            n = 0;
-            foreach (var token in lineIds)
-            {
-                if (int.TryParse(token, out var line))
-                    lineNumbers[n] = line;
-                n++;
-            }
-
-            var startPositions = new List<int> { -1, -1 };
-            lineIds = row.Cells[ReportColumns.StartPosition.ToString()].Value
-                .ToString()
-                .Replace(Environment.NewLine, SplitChar.ToString())
-                .Split(SplitChar);
-            n = 0;
-            foreach (var token in lineIds)
-            {
-                if (int.TryParse(token, out var line))
-                    startPositions[n] = line;
-                n++;
-            }
-
-            var endPositions = new List<int> { -1, -1 };
-            lineIds = row.Cells[ReportColumns.EndPosition.ToString()].Value
-                .ToString()
-                .Replace(Environment.NewLine, SplitChar.ToString())
-                .Split(SplitChar);
-            n = 0;
-            foreach (var token in lineIds)
-            {
-                if (int.TryParse(token, out var line))
-                    endPositions[n] = line;
-                n++;
-            }
-
-            if (_useVsCode)
-            {
-                var execParams = "-r -g " + files[0] + ":" + lineNumbers[0];
-                VsCodeOpenFile(execParams);
-                return;
-            }
-
-            // if click direct to LineID - open the collected files
-            if (e.ColumnIndex == (int)ReportColumns.LineId
-                && !string.IsNullOrEmpty(row.Cells[ReportColumns.LineId.ToString()].Value
-                    .ToString())
-                && !string.IsNullOrEmpty(row.Cells[ReportColumns.FileType.ToString()].Value
-                    .ToString())
-                && row.Cells[ReportColumns.ValidationType.ToString()].Value
-                    .ToString() != ValidationTypeEnum.Scheme.ToString())
-            {
-                for (var i = 0; i < 2; i++)
-                {
-                    if (string.IsNullOrEmpty(fileTypes[i]))
-                    {
-                        if (_editors[i] != null && !_editors[i].IsDisposed)
-                            _editors[i].Close();
-
-                        continue;
-                    }
-
-                    if (!File.Exists(fileTypes[i]))
-                        continue;
-
-                    if (_showPreview && _editors[i] != null
-                                     && !_editors[i].IsDisposed
-                                     && (_editors[i].SingleLineBrackets
-                                         || !_editors[i].Text.EndsWith(fileTypes[i])))
-                    {
-                        _editors[i].SingleLineBrackets = false;
-                        _editors[i].LoadTextFromFile(fileTypes[i]);
-                    }
-                    else
-                    {
-                        _editors[i] = new JsonViewer("", "", true)
-                        {
-                            SingleLineBrackets = false
-                        };
-
-                        if (i == 0)
-                            _editors[0].Closing += OnClosing1;
-                        else
-                            _editors[1].Closing += OnClosing2;
-
-                        _editors[i].LoadTextFromFile(fileTypes[i]);
-                    }
-
-                    _editors[i].AlwaysOnTop = _alwaysOnTop;
-
-                    _editors[i].Show();
-                    _editors[i].Text = (i == 1 ? "New value: " : "Old value: ") + fileTypes[i];
-
-                    if (!(_editorPosition[i].WinX == 0
-                          && _editorPosition[i].WinY == 0
-                          && _editorPosition[i].WinW == 0
-                          && _editorPosition[i].WinH == 0))
-                    {
-                        _editors[i].Location = new Point(_editorPosition[i].WinX, _editorPosition[i].WinY);
-                        _editors[i].Width = _editorPosition[i].WinW;
-                        _editors[i].Height = _editorPosition[i].WinH;
-                    }
-
-
-                    if (lines[i] != -1)
-                        _editors[i].HighlightText(lines[i] + "] ");
-                }
-            }
-            // if click to any column except LineID - open original file
-            else
-            {
-                for (var i = 0; i < 2; i++)
-                {
-                    if (string.IsNullOrEmpty(files[i]))
-                    {
-                        if (_editors[i] != null && !_editors[i].IsDisposed)
-                            _editors[i].Close();
-
-                        continue;
-                    }
-
-                    if (!File.Exists(files[i]))
-                        continue;
-
-                    if (_showPreview && _editors[i] != null
-                                     && !_editors[i].IsDisposed
-                                     && (_editors[i].SingleLineBrackets != _reformatJson
-                                         || !_editors[i].Text.EndsWith(files[i])))
-                    {
-                        _editors[i].SingleLineBrackets = _reformatJson;
-                        _editors[i].LoadJsonFromFile(files[i]);
-                    }
-                    else
-                    {
-                        _editors[i] = new JsonViewer("", "", true)
-                        {
-                            SingleLineBrackets = _reformatJson
-                        };
-
-                        if (i == 0)
-                            _editors[i].Closing += OnClosing1;
-                        else
-                            _editors[i].Closing += OnClosing2;
-
-                        _editors[i].LoadJsonFromFile(files[i]);
-                    }
-
-                    _editors[i].AlwaysOnTop = _alwaysOnTop;
-                    _editors[i].Show();
-                    _editors[i].Text = (i == 1 ? "New value: " : "Old value: ") + fileNames[i];
-
-                    if (!(_editorPosition[i].WinX == 0
-                          && _editorPosition[i].WinY == 0
-                          && _editorPosition[i].WinW == 0
-                          && _editorPosition[i].WinH == 0))
-                    {
-                        _editors[i].Location = new Point(_editorPosition[i].WinX, _editorPosition[i].WinY);
-                        _editors[i].Width = _editorPosition[i].WinW;
-                        _editors[i].Height = _editorPosition[i].WinH;
-                    }
-
-                    if (!_editors[i].HighlightPathJson(paths[i]))
-                    {
-                        if (!_editors[i].HighlightLines(lineNumbers[i] - 1, 0))
-                        {
-                            _editors[i].HighlightPosition(startPositions[i], endPositions[i] + 1);
-                        }
-                    }
-                }
-            }
+            //OpenFile(e.RowIndex, e.ColumnIndex, true);
         }
 
         private void OnClosing1(object sender, CancelEventArgs e)
@@ -772,9 +555,7 @@ namespace KineticValidator
                 || _oldColumn != (int)ReportColumns.LineId && newColumn == (int)ReportColumns.LineId
                 || _oldRow != newRow)
             {
-                var param = new DataGridViewCellEventArgs(newColumn,
-                    newRow);
-                DataGridView_report_CellDoubleClick(dataGridView_report, param);
+                OpenFile(newRow, newColumn, false);
                 dataGridView_report.Focus();
                 _oldRow = newRow;
                 _oldColumn = newColumn;
@@ -1106,149 +887,37 @@ namespace KineticValidator
             switch (token)
             {
                 case JProperty jProperty:
-                {
-                    var jValue = jProperty.Value;
-                    if (jValue is JArray jArrayValue)
                     {
-                        var arrayPath = jArrayValue.Path;
-                        var arrayName = jProperty.Name;
-
-                        // get new file type
-                        if (arrayPath == arrayName && _fileTypes.Any(n => n.PropertyTypeName == arrayName))
+                        var jValue = jProperty.Value;
+                        if (jValue is JArray jArrayValue)
                         {
-                            fileType = _fileTypes
-                                .FirstOrDefault(n => n.PropertyTypeName == arrayName)?.FileType ?? KineticContentType.Unknown;
-                        }
-                    }
+                            var arrayPath = jArrayValue.Path;
+                            var arrayName = jProperty.Name;
 
-                    var jsonPath = jProperty.Path;
-                    var propValue = "";
-                    var name = jProperty.Name;
-
-                    var lineInfo = (IJsonLineInfo)jProperty;
-                    var lineNumber = ((IJsonLineInfo)jProperty).LineNumber;
-
-                    if (jValue is JValue jPropertyValue)
-                    {
-                        propValue = jPropertyValue.Value?.ToString();
-                    }
-
-                    // get schema version
-                    if (name == VersionTagName)
-                    {
-                        if (!string.IsNullOrEmpty(version))
-                        {
-                            var report = new ReportItem
+                            // get new file type
+                            if (arrayPath == arrayName && _fileTypes.Any(n => n.PropertyTypeName == arrayName))
                             {
-                                ProjectName = _projectName,
-                                FullFileName = fullFileName,
-                                JsonPath = jsonPath,
-                                LineNumber = lineNumber.ToString(),
-                                Message = $"Scheme version inconsistent: {version}->{propValue}",
-                                ValidationType = ValidationTypeEnum.Logic.ToString(),
-                                Severity = ImportanceEnum.Error.ToString(),
-                                Source = "ParseJsonObject"
-                            };
-                            parseJsonObjectReportsCollection.Add(report);
+                                fileType = _fileTypes
+                                    .FirstOrDefault(n => n.PropertyTypeName == arrayName)?.FileType ?? KineticContentType.Unknown;
+                            }
                         }
 
-                        version = propValue;
-                    }
-                    else if (name == SchemaTagName)
-                    {
-                        processedList[fullFileName] = propValue;
-                    }
+                        var jsonPath = jProperty.Path;
+                        var propValue = "";
+                        var name = jProperty.Name;
 
-                    var newProperty = new JsonProperty
-                    {
-                        Value = propValue ?? "",
-                        FileType = fileType,
-                        FullFileName = fullFileName,
-                        JsonPath = jsonPath,
-                        JsonDepth = jsonDepth,
-                        Name = name,
-                        Version = version,
-                        ItemType = JsonItemType.Property,
-                        Parent = parent,
-                        Shared = shared,
-                        SourceLineNumber = lineNumber
-                    };
-                    rootCollection.Add(newProperty);
+                        var lineInfo = (IJsonLineInfo)jProperty;
+                        var lineNumber = ((IJsonLineInfo)jProperty).LineNumber;
 
-                    // try to import file
-                    if (name == FileTagName)
-                    {
-                        var importFileName = "";
-                        if (_folderType == FolderType.Unknown) //deployment folder
+                        if (jValue is JValue jPropertyValue)
                         {
-                            var report = new ReportItem
-                            {
-                                ProjectName = _projectName,
-                                FullFileName = propValue,
-                                FileType = "",
-                                JsonPath = jsonPath,
-                                LineNumber = lineNumber.ToString(),
-                                Message = "Folder type not recognized (Deployment/Repository/...)",
-                                ValidationType = ValidationTypeEnum.File.ToString(),
-                                Severity = ImportanceEnum.Warning.ToString(),
-                                Source = "ParseJsonObject"
-                            };
-                            parseJsonObjectReportsCollection.Add(report);
-                            importFileName = GetFileFromRef(propValue);
-                        }
-                        else
-                        {
-                            importFileName = FixFilePath(GetFileFromRef(propValue), fullFileName);
+                            propValue = jPropertyValue.Value?.ToString();
                         }
 
-                        importFileName = GetFilePath(fullFileName)
-                                         + importFileName.Replace('/', '\\');
-                        importFileName = SimplifyPath(importFileName);
-                        var importFileType = GetFileTypeFromJsonPath(jsonPath);
-                        if (importFileType == KineticContentType.Unknown)
+                        // get schema version
+                        if (name == VersionTagName)
                         {
-                            importFileType = Utilities.GetFileTypeFromFileName(importFileName, _fileTypes);
-                        }
-
-                        if (!File.Exists(importFileName))
-                        {
-                            var report = new ReportItem
-                            {
-                                ProjectName = _projectName,
-                                FullFileName = importFileName,
-                                FileType = importFileType.ToString(),
-                                JsonPath = jsonPath,
-                                LineNumber = lineNumber.ToString(),
-                                Message = "File doesn't exists",
-                                ValidationType = ValidationTypeEnum.File.ToString(),
-                                Severity = ImportanceEnum.Error.ToString(),
-                                Source = "ParseJsonObject"
-                            };
-                            parseJsonObjectReportsCollection.Add(report);
-                        }
-                        else
-                        {
-                            jsonDepth++;
-                            DeserializeFile(
-                                importFileName,
-                                importFileType,
-                                _jsonPropertiesCollection,
-                                processedList,
-                                jsonDepth,
-                                deserializeFileReportsCollection,
-                                parseJsonObjectReportsCollection);
-                            jsonDepth--;
-                        }
-                    }
-
-                    // get new file type
-                    if (_fileTypes.Any(n => n.PropertyTypeName == name) && jsonPath.StartsWith(ImportTagName))
-                    {
-                        var newFileType = _fileTypes
-                            .FirstOrDefault(n => n.PropertyTypeName == name)?.FileType ?? KineticContentType.Unknown;
-                        if (fileType != newFileType)
-                        {
-                            if (fileType != KineticContentType.Unknown && newFileType != KineticContentType.Patch)
+                            if (!string.IsNullOrEmpty(version))
                             {
                                 var report = new ReportItem
                                 {
@@ -1256,23 +925,168 @@ namespace KineticValidator
                                     FullFileName = fullFileName,
                                     JsonPath = jsonPath,
                                     LineNumber = lineNumber.ToString(),
-                                    Message = $"File type inconsistent: {fileType}->{newFileType}",
+                                    Message = $"Scheme version inconsistent: {version}->{propValue}",
                                     ValidationType = ValidationTypeEnum.Logic.ToString(),
-                                    Severity = ImportanceEnum.Warning.ToString(),
+                                    Severity = ImportanceEnum.Error.ToString(),
                                     Source = "ParseJsonObject"
                                 };
                                 parseJsonObjectReportsCollection.Add(report);
                             }
 
-                            newProperty.FileType = fileType = newFileType;
+                            version = propValue;
                         }
-                    }
-
-                    foreach (var child in jProperty.Children())
-                        if (child is JArray || child is JObject)
+                        else if (name == SchemaTagName)
                         {
-                            jsonDepth++;
-                            var newParent = string.IsNullOrEmpty(name) ? parent : name;
+                            processedList[fullFileName] = propValue;
+                        }
+
+                        var newProperty = new JsonProperty
+                        {
+                            Value = propValue ?? "",
+                            FileType = fileType,
+                            FullFileName = fullFileName,
+                            JsonPath = jsonPath,
+                            JsonDepth = jsonDepth,
+                            Name = name,
+                            Version = version,
+                            ItemType = JsonItemType.Property,
+                            Parent = parent,
+                            Shared = shared,
+                            SourceLineNumber = lineNumber
+                        };
+                        rootCollection.Add(newProperty);
+
+                        // try to import file
+                        if (name == FileTagName)
+                        {
+                            var importFileName = "";
+                            if (_folderType == FolderType.Unknown) //deployment folder
+                            {
+                                var report = new ReportItem
+                                {
+                                    ProjectName = _projectName,
+                                    FullFileName = propValue,
+                                    FileType = "",
+                                    JsonPath = jsonPath,
+                                    LineNumber = lineNumber.ToString(),
+                                    Message = "Folder type not recognized (Deployment/Repository/...)",
+                                    ValidationType = ValidationTypeEnum.File.ToString(),
+                                    Severity = ImportanceEnum.Warning.ToString(),
+                                    Source = "ParseJsonObject"
+                                };
+                                parseJsonObjectReportsCollection.Add(report);
+                                importFileName = GetFileFromRef(propValue);
+                            }
+                            else
+                            {
+                                importFileName = FixFilePath(GetFileFromRef(propValue), fullFileName);
+                            }
+
+                            importFileName = GetFilePath(fullFileName)
+                                             + importFileName.Replace('/', '\\');
+                            importFileName = SimplifyPath(importFileName);
+                            var importFileType = GetFileTypeFromJsonPath(jsonPath);
+                            if (importFileType == KineticContentType.Unknown)
+                            {
+                                importFileType = Utilities.GetFileTypeFromFileName(importFileName, _fileTypes);
+                            }
+
+                            if (!File.Exists(importFileName))
+                            {
+                                var report = new ReportItem
+                                {
+                                    ProjectName = _projectName,
+                                    FullFileName = importFileName,
+                                    FileType = importFileType.ToString(),
+                                    JsonPath = jsonPath,
+                                    LineNumber = lineNumber.ToString(),
+                                    Message = "File doesn't exists",
+                                    ValidationType = ValidationTypeEnum.File.ToString(),
+                                    Severity = ImportanceEnum.Error.ToString(),
+                                    Source = "ParseJsonObject"
+                                };
+                                parseJsonObjectReportsCollection.Add(report);
+                            }
+                            else
+                            {
+                                jsonDepth++;
+                                DeserializeFile(
+                                    importFileName,
+                                    importFileType,
+                                    _jsonPropertiesCollection,
+                                    processedList,
+                                    jsonDepth,
+                                    deserializeFileReportsCollection,
+                                    parseJsonObjectReportsCollection);
+                                jsonDepth--;
+                            }
+                        }
+
+                        // get new file type
+                        if (_fileTypes.Any(n => n.PropertyTypeName == name) && jsonPath.StartsWith(ImportTagName))
+                        {
+                            var newFileType = _fileTypes
+                                .FirstOrDefault(n => n.PropertyTypeName == name)?.FileType ?? KineticContentType.Unknown;
+                            if (fileType != newFileType)
+                            {
+                                if (fileType != KineticContentType.Unknown && newFileType != KineticContentType.Patch)
+                                {
+                                    var report = new ReportItem
+                                    {
+                                        ProjectName = _projectName,
+                                        FullFileName = fullFileName,
+                                        JsonPath = jsonPath,
+                                        LineNumber = lineNumber.ToString(),
+                                        Message = $"File type inconsistent: {fileType}->{newFileType}",
+                                        ValidationType = ValidationTypeEnum.Logic.ToString(),
+                                        Severity = ImportanceEnum.Warning.ToString(),
+                                        Source = "ParseJsonObject"
+                                    };
+                                    parseJsonObjectReportsCollection.Add(report);
+                                }
+
+                                newProperty.FileType = fileType = newFileType;
+                            }
+                        }
+
+                        foreach (var child in jProperty.Children())
+                            if (child is JArray || child is JObject)
+                            {
+                                jsonDepth++;
+                                var newParent = string.IsNullOrEmpty(name) ? parent : name;
+                                ParseJsonObject(
+                                    child,
+                                    fileType,
+                                    rootCollection,
+                                    fullFileName,
+                                    processedList,
+                                    ref version,
+                                    jsonDepth,
+                                    newParent,
+                                    shared,
+                                    deserializeFileReportsCollection,
+                                    parseJsonObjectReportsCollection);
+                                jsonDepth--;
+                            }
+
+                        break;
+                    }
+                case JObject jObject:
+                    {
+                        var newProperty = new JsonProperty
+                        {
+                            FileType = fileType,
+                            FullFileName = fullFileName,
+                            JsonDepth = jsonDepth,
+                            Name = "{",
+                            Version = version,
+                            ItemType = JsonItemType.Object,
+                            Parent = parent,
+                            Shared = shared
+                        };
+                        rootCollection.Add(newProperty);
+
+                        foreach (var child in jObject.Children())
                             ParseJsonObject(
                                 child,
                                 fileType,
@@ -1281,121 +1095,88 @@ namespace KineticValidator
                                 processedList,
                                 ref version,
                                 jsonDepth,
-                                newParent,
+                                parent,
                                 shared,
                                 deserializeFileReportsCollection,
                                 parseJsonObjectReportsCollection);
-                            jsonDepth--;
-                        }
 
-                    break;
-                }
-                case JObject jObject:
-                {
-                    var newProperty = new JsonProperty
-                    {
-                        FileType = fileType,
-                        FullFileName = fullFileName,
-                        JsonDepth = jsonDepth,
-                        Name = "{",
-                        Version = version,
-                        ItemType = JsonItemType.Object,
-                        Parent = parent,
-                        Shared = shared
-                    };
-                    rootCollection.Add(newProperty);
-
-                    foreach (var child in jObject.Children())
-                        ParseJsonObject(
-                            child,
-                            fileType,
-                            rootCollection,
-                            fullFileName,
-                            processedList,
-                            ref version,
-                            jsonDepth,
-                            parent,
-                            shared,
-                            deserializeFileReportsCollection,
-                            parseJsonObjectReportsCollection);
-
-                    newProperty = new JsonProperty
-                    {
-                        FileType = fileType,
-                        FullFileName = fullFileName,
-                        JsonDepth = jsonDepth,
-                        Name = "}",
-                        Version = version,
-                        ItemType = JsonItemType.Object,
-                        Parent = parent,
-                        Shared = shared
-                    };
-                    rootCollection.Add(newProperty);
-
-                    break;
-                }
-                case JArray jArray:
-                {
-                    var newProperty = new JsonProperty
-                    {
-                        FileType = fileType,
-                        FullFileName = fullFileName,
-                        JsonDepth = jsonDepth - 1,
-                        Name = "[",
-                        Version = version,
-                        ItemType = JsonItemType.Array,
-                        Parent = parent,
-                        Shared = shared
-                    };
-                    rootCollection.Add(newProperty);
-
-                    foreach (var child in jArray.Children())
-                        ParseJsonObject(
-                            child,
-                            fileType,
-                            rootCollection,
-                            fullFileName,
-                            processedList,
-                            ref version,
-                            jsonDepth,
-                            parent,
-                            shared,
-                            deserializeFileReportsCollection,
-                            parseJsonObjectReportsCollection);
-
-                    newProperty = new JsonProperty
-                    {
-                        FileType = fileType,
-                        FullFileName = fullFileName,
-                        JsonDepth = jsonDepth - 1,
-                        Name = "]",
-                        Version = version,
-                        ItemType = JsonItemType.Array,
-                        Parent = parent,
-                        Shared = shared
-                    };
-                    rootCollection.Add(newProperty);
-
-                    break;
-                }
-                default:
-                {
-                    if (token.Children().Any())
-                    {
-                        var report = new ReportItem
+                        newProperty = new JsonProperty
                         {
-                            ProjectName = _projectName,
+                            FileType = fileType,
                             FullFileName = fullFileName,
-                            JsonPath = token.Path,
-                            Message = "Unknown node skipped by parser: " + token,
-                            ValidationType = ValidationTypeEnum.Parse.ToString(),
-                            Severity = ImportanceEnum.Error.ToString(),
-                            Source = "ParseJsonObject"
+                            JsonDepth = jsonDepth,
+                            Name = "}",
+                            Version = version,
+                            ItemType = JsonItemType.Object,
+                            Parent = parent,
+                            Shared = shared
                         };
-                        parseJsonObjectReportsCollection.Add(report);
+                        rootCollection.Add(newProperty);
+
+                        break;
                     }
-                }
-                break;
+                case JArray jArray:
+                    {
+                        var newProperty = new JsonProperty
+                        {
+                            FileType = fileType,
+                            FullFileName = fullFileName,
+                            JsonDepth = jsonDepth - 1,
+                            Name = "[",
+                            Version = version,
+                            ItemType = JsonItemType.Array,
+                            Parent = parent,
+                            Shared = shared
+                        };
+                        rootCollection.Add(newProperty);
+
+                        foreach (var child in jArray.Children())
+                            ParseJsonObject(
+                                child,
+                                fileType,
+                                rootCollection,
+                                fullFileName,
+                                processedList,
+                                ref version,
+                                jsonDepth,
+                                parent,
+                                shared,
+                                deserializeFileReportsCollection,
+                                parseJsonObjectReportsCollection);
+
+                        newProperty = new JsonProperty
+                        {
+                            FileType = fileType,
+                            FullFileName = fullFileName,
+                            JsonDepth = jsonDepth - 1,
+                            Name = "]",
+                            Version = version,
+                            ItemType = JsonItemType.Array,
+                            Parent = parent,
+                            Shared = shared
+                        };
+                        rootCollection.Add(newProperty);
+
+                        break;
+                    }
+                default:
+                    {
+                        if (token.Children().Any())
+                        {
+                            var report = new ReportItem
+                            {
+                                ProjectName = _projectName,
+                                FullFileName = fullFileName,
+                                JsonPath = token.Path,
+                                Message = "Unknown node skipped by parser: " + token,
+                                ValidationType = ValidationTypeEnum.Parse.ToString(),
+                                Severity = ImportanceEnum.Error.ToString(),
+                                Source = "ParseJsonObject"
+                            };
+                            parseJsonObjectReportsCollection.Add(report);
+                        }
+                    }
+                    break;
             }
         }
 
@@ -1493,10 +1274,14 @@ namespace KineticValidator
                 }
 
                 if ((col == ReportColumns.ProjectName.ToString() && !collection)
-                    || col == ReportColumns.LineId.ToString()
                     || col == ReportColumns.StartPosition.ToString()
                     || col == ReportColumns.EndPosition.ToString()
                     || col == ReportColumns.Source.ToString())
+                {
+                    newColumn.Visible = false;
+                }
+
+                if (!_saveTmpFiles && col == ReportColumns.LineId.ToString())
                 {
                     newColumn.Visible = false;
                 }
@@ -1688,6 +1473,243 @@ namespace KineticValidator
             };
 
             ProjectValidator.Initialize(procConf, projConf, seedData, fullInit);
+        }
+
+        private void OpenFile(int rowNumber, int columnNumber, bool newEditor = false)
+        {
+            var row = dataGridView_report.Rows[rowNumber];
+            var files = new List<string> { "", "" };
+            var fileNames = row.Cells[ReportColumns.FullFileName.ToString()].Value
+                .ToString()
+                .Replace(Environment.NewLine, SplitChar.ToString())
+                .Split(SplitChar);
+            var n = 0;
+            foreach (var token in fileNames)
+            {
+                files[n] = token;
+                n++;
+            }
+
+            var paths = new List<string> { "", "" };
+            var pathIds = row.Cells[ReportColumns.JsonPath.ToString()].Value
+                .ToString()
+                .Replace(Environment.NewLine, SplitChar.ToString())
+                .Split(SplitChar);
+            n = 0;
+            foreach (var token in pathIds)
+            {
+                paths[n] = token;
+                n++;
+            }
+
+            var fileTypes = new List<string> { "", "" };
+            var fileTypeIds = row.Cells[ReportColumns.FileType.ToString()].Value
+                .ToString()
+                .Replace(Environment.NewLine, SplitChar.ToString())
+                .Split(SplitChar);
+            n = 0;
+            foreach (var token in fileTypeIds)
+            {
+                fileTypes[n] = GetSaveFileNameByType(token);
+                n++;
+            }
+
+            var lines = new List<int> { -1, -1 };
+            var lineIds = row.Cells[ReportColumns.LineId.ToString()].Value
+                .ToString()
+                .Replace(Environment.NewLine, SplitChar.ToString())
+                .Split(SplitChar);
+            n = 0;
+            foreach (var token in lineIds)
+            {
+                if (int.TryParse(token, out var line))
+                    lines[n] = line;
+                n++;
+            }
+
+            var lineNumbers = new List<int> { -1, -1 };
+            lineIds = row.Cells[ReportColumns.LineNumber.ToString()].Value
+                .ToString()
+                .Replace(Environment.NewLine, SplitChar.ToString())
+                .Split(SplitChar);
+            n = 0;
+            foreach (var token in lineIds)
+            {
+                if (int.TryParse(token, out var line))
+                    lineNumbers[n] = line;
+                n++;
+            }
+
+            var startPositions = new List<int> { -1, -1 };
+            lineIds = row.Cells[ReportColumns.StartPosition.ToString()].Value
+                .ToString()
+                .Replace(Environment.NewLine, SplitChar.ToString())
+                .Split(SplitChar);
+            n = 0;
+            foreach (var token in lineIds)
+            {
+                if (int.TryParse(token, out var line))
+                    startPositions[n] = line;
+                n++;
+            }
+
+            var endPositions = new List<int> { -1, -1 };
+            lineIds = row.Cells[ReportColumns.EndPosition.ToString()].Value
+                .ToString()
+                .Replace(Environment.NewLine, SplitChar.ToString())
+                .Split(SplitChar);
+            n = 0;
+            foreach (var token in lineIds)
+            {
+                if (int.TryParse(token, out var line))
+                    endPositions[n] = line;
+                n++;
+            }
+
+            // if click direct to LineID - open the collected files
+            if (columnNumber == (int)ReportColumns.LineId
+                && !string.IsNullOrEmpty(row.Cells[ReportColumns.LineId.ToString()].Value
+                    .ToString())
+                && !string.IsNullOrEmpty(row.Cells[ReportColumns.FileType.ToString()].Value
+                    .ToString())
+                && row.Cells[ReportColumns.ValidationType.ToString()].Value
+                    .ToString() != ValidationTypeEnum.Scheme.ToString())
+            {
+                for (var i = 0; i < 2; i++)
+                {
+                    if (string.IsNullOrEmpty(fileTypes[i]))
+                    {
+                        if (_editors[i] != null && !_editors[i].IsDisposed)
+                        {
+                            _editors[i].Close();
+                        }
+                        continue;
+                    }
+
+                    if (!File.Exists(fileTypes[i]))
+                    {
+                        _editors[i]?.Close();
+                        continue;
+                    }
+
+                    ShowPreviewEditor(i, fileTypes[i], null, -1, -1, -1, newEditor);
+                    var startPos = _editors[i].EditorText.IndexOf(lines[i] + "] ");
+                    var endPos = _editors[i].EditorText.IndexOf(Environment.NewLine, startPos + 1);
+                    ShowPreviewEditor(i, fileTypes[i], null, -1, startPos, endPos);
+                }
+            }
+            // if click to any column except LineID - open original file
+            else
+            {
+                for (var i = 0; i < 2; i++)
+                {
+                    if (string.IsNullOrEmpty(files[i]))
+                    {
+                        if (_editors[i] != null && !_editors[i].IsDisposed)
+                        {
+                            _editors[i].Close();
+                        }
+                        continue;
+                    }
+
+                    if (!File.Exists(files[i]))
+                    {
+                        _editors[i]?.Close();
+                        continue;
+                    }
+
+                    ShowPreviewEditor(i, files[i], paths[i], lineNumbers[i], startPositions[i], endPositions[i], newEditor);
+                }
+            }
+        }
+
+        private void ShowPreviewEditor(int editorNumber, string fileName, string jsonPath = "", int lineNumber = -1, int startPosition = -1, int endPosition = -1, bool newWindow = false)
+        {
+            if (_useVsCode)
+            {
+                if (lineNumber < 0) lineNumber = GetLineNumberForPath(fileName, jsonPath) + 1;
+
+                var execParams = "-r -g " + fileName + ":" + lineNumber;
+                VsCodeOpenFile(execParams);
+
+                return;
+            }
+
+            var textEditor = _editors[editorNumber];
+            if (newWindow)
+            {
+                textEditor = null;
+            }
+
+            bool fileLoaded;
+            if (textEditor != null && !textEditor.IsDisposed)
+            {
+                if (textEditor.SingleLineBrackets != _reformatJson || textEditor.Text != PreViewCaption + fileName)
+                {
+                    textEditor.SingleLineBrackets = _reformatJson;
+                    fileLoaded = textEditor.LoadJsonFromFile(fileName);
+                }
+                else
+                {
+                    fileLoaded = true;
+                }
+            }
+            else
+            {
+                if (textEditor != null)
+                {
+                    textEditor.Close();
+                    textEditor.Dispose();
+                }
+
+                textEditor = new JsonViewer("", "", newWindow)
+                {
+                    SingleLineBrackets = _reformatJson
+                };
+
+                if (!newWindow)
+                {
+                    if (editorNumber == 1) textEditor.Closing += OnClosing1;
+                    else textEditor.Closing += OnClosing1;
+                }
+
+                fileLoaded = textEditor.LoadJsonFromFile(fileName);
+            }
+
+            _editors[editorNumber] = textEditor;
+
+            textEditor.AlwaysOnTop = _alwaysOnTop;
+            textEditor.Show();
+
+            if (!fileLoaded)
+                return;
+
+            if (!newWindow)
+            {
+                textEditor.Text = PreViewCaption + fileName;
+
+                if (!(_editorPosition[editorNumber].WinX == 0
+                      && _editorPosition[editorNumber].WinY == 0
+                      && _editorPosition[editorNumber].WinW == 0
+                      && _editorPosition[editorNumber].WinH == 0))
+                {
+                    textEditor.Location = new Point(_editorPosition[editorNumber].WinX, _editorPosition[editorNumber].WinY);
+                    textEditor.Width = _editorPosition[editorNumber].WinW;
+                    textEditor.Height = _editorPosition[editorNumber].WinH;
+                }
+            }
+            else
+            {
+                textEditor.Text = fileName;
+            }
+
+            if (!textEditor.HighlightPathJson(jsonPath))
+            {
+                if (!textEditor.HighlightPosition(startPosition, endPosition + 1))
+                {
+                    textEditor.HighlightLines(lineNumber, 0);
+                }
+            }
         }
 
         #endregion
@@ -1896,6 +1918,40 @@ namespace KineticValidator
             {
                 textBox_logText.Text += ex.Message;
             }
+        }
+
+        private int GetLineNumberForPath(string fullFileName, string jsonPath)
+        {
+            string jsonStr;
+            try
+            {
+                jsonStr = File.ReadAllText(fullFileName);
+            }
+            catch (Exception ex)
+            {
+                return 0;
+            }
+
+            if (string.IsNullOrEmpty(jsonStr))
+            {
+                return 0;
+            }
+
+            var parser = new JsonPathParser
+            {
+                TrimComplexValues = false,
+                SaveComplexValues = false,
+                RootName = "",
+                JsonPathDivider = JsonPathDiv,
+                SearchStartOnly = true
+            };
+
+            var startLine = 0;
+            var property = parser.SearchJsonPath(jsonStr, JsonPathDiv + jsonPath);
+            if (property != null)
+                parser.GetLinesNumber(jsonStr, property.StartPosition, property.EndPosition, out startLine, out var _);
+
+            return startLine;
         }
 
         #endregion
