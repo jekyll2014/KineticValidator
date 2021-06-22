@@ -12,7 +12,7 @@ namespace KineticValidator.Properties {
     
     
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.VisualStudio.Editors.SettingsDesigner.SettingsSingleFileGenerator", "16.8.1.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.VisualStudio.Editors.SettingsDesigner.SettingsSingleFileGenerator", "16.10.0.0")]
     internal sealed partial class Settings : global::System.Configuration.ApplicationSettingsBase {
         
         private static Settings defaultInstance = ((Settings)(global::System.Configuration.ApplicationSettingsBase.Synchronized(new Settings())));
@@ -73,7 +73,7 @@ namespace KineticValidator.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("%value%;%currentDataView%;%row%")]
+        [global::System.Configuration.DefaultSettingValueAttribute(@"%value%; %row%; %oldValue%; %current%; %previous%; %column%; %currentDataView%; %previousDataView%; %coreCurrentDataView%; %corePreviousDataView%; %nodeEntityType%; %nodeSysRowID%; %nodeIsFolder%; %dragEntityType%; %startDateTime%; %endDateTime%; %isAllDayEvent%; %viewName%")]
         public string SystemMacros {
             get {
                 return ((string)(this["SystemMacros"]));
@@ -87,7 +87,7 @@ namespace KineticValidator.Properties {
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("Constant;CallContextBpmData;CallContextClientData;actionResult;searchResult;sysLi" +
             "censedModules;sysTools;sysGlobalVariable;sysPages;sysTabs;sysVariable;sysTreeNod" +
-            "e;sysDragRows;sysPublishedData;strings")]
+            "e;sysDragRows;sysPublishedData;strings;sysGanttTasks;")]
         public string SystemDataViews {
             get {
                 return ((string)(this["SystemDataViews"]));

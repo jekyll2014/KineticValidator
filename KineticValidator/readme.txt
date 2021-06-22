@@ -39,12 +39,15 @@ Validations implemented:
 	36) Missing searches - call to search forms not having certain \Shared\search\like\searchForm\search.jsonc file (not implemented in Kinetic).
 	37) JavaScript code - any property value containing "#_" pattern
 	38) JS #_trans.dataView('DataView').count_# - old-style version of a newer "%DataView.count%" macro
-	39) Missing layout id's - any layouts not having the "model.id" or "model.id" different from control "id"
-	40) Incorrect layout id's - any layouts having "model.id" different from control "id"
-	41) Incorrect dataview-condition - "dataview-condition" method must have different values for "dataview" and "result" properties otherwise dataview data could be corrupted.
-	42) Incorrect tab links - to detect inexistent tab id's (broken by AppStudio). Not very reliable - false alarms on slide-outs.
-	43) Incorrect REST calls - to detect inconsistent REST calls. Available services/methods/parameters are taken from Server\Assemblies folder *.Contract*.dll files. Need to have some dependent DLL's in program or Assemblies folder to get parameters list for the methods (service and methods works well without). See 'Tech notes'.
-	44) Duplicate GUID's - to find GUID duplicates within project scope. !!! Experimental feature !!!
+	39) Incorrect dataview-condition - "dataview-condition" method must have different values for "dataview" and "result" properties otherwise dataview data could be corrupted.
+	40) Incorrect REST calls - to detect inconsistent REST calls. Available services/methods/parameters are taken from Server\Assemblies folder *.Contract*.dll files. Need to have some dependent DLL's in program or Assemblies folder to get parameters list for the methods (service and methods works well without). See 'Tech notes'.
+	41) Incorrect field names - checking every {dataview.field} pattern for defined dataView and existing field as per server dataset information. Field check is only performed for server-related dataTables/views.
+	42) Missing layout id's - any layouts not having the "model.id" or "model.id" different from control "id"
+	43) Incorrect event expressions - <condition> event expression validation (C# style)
+	44) Incorrect rule conditions - <dataview-condition> event expression and rule condition validation (SQL style)
+	45) !!!Experimental feature!!! Incorrect layout id's - any layouts having "model.id" different from control "id"
+	46) !!!Experimental feature!!! Incorrect tab links - to detect inexistent tab id's (broken by AppStudio). Not very reliable - false alarms on slide-outs.
+	47) !!!Experimental feature!!! Duplicate GUID's - to find GUID duplicates within project scope.
 
 	It is possible to select root projects folder to run mass-validation. Note that it tries to find a project in only one sub-folder level.
 	Program also tries to load report from \program_folder\project_folder\ on project folder selection. This is a previously generated folder so the report can be outdated.
@@ -83,7 +86,8 @@ Tech. notes:
 		Erp.Common.ContractInterfaces.dll
 		Erp.Contracts.BO.JobEntry.dll
 		Ice.Contracts.Lib.ClassAttribute.dll
-		...and the above list can be changed due to a dependency changes.
+		...and the above list can be changed due to a dependency changes. Please try update_dlls.bat to collect DLL's needed. Note the list of DLL's could be changed any time.
 	- Assembly load exceptions will be saved to DeveloperLog.txt file so you can check it to see which assemblies are missing.
+	- Expression/condition validation is not intended to validate complex expressions with JS code inside. Please use "#_ _#" bracketing to mark JS expressions.
 
 P.S. Program is not displaying any text on the screen now in command line mode as I don't know how to manage both cmd.line and GUI mode in one executable - it has nagging black window if I set cmdline or no console output in GUI mode. Console output not displayed but still available to redirect into the file (like "KineticValidator.exe /? > help.txt").

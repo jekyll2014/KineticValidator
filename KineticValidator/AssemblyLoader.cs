@@ -28,7 +28,8 @@ namespace KineticValidator
             _allDataSetsInfo = null;
             var fileName = GetAssemblyContractName(svcName);
 
-            if (string.IsNullOrEmpty(fileName)) return false;
+            if (string.IsNullOrEmpty(fileName))
+                return false;
 
             var assemblyFileName = assemblyPath + "\\" + fileName;
             try
@@ -46,13 +47,16 @@ namespace KineticValidator
         {
             var fileName = "";
             var nameTokens = svcName.ToUpper().Split('.');
-            if (nameTokens.Length != 3) return fileName;
+            if (nameTokens.Length != 3)
+                return fileName;
 
             // 1st token must be ["ERP","ICE"]
-            if (!new[] { "ERP", "ICE" }.Contains(nameTokens[0])) return fileName;
+            if (!new[] { "ERP", "ICE" }.Contains(nameTokens[0]))
+                return fileName;
 
             // 2nd token must be ["BO,"LIB","PROC","RPT","SEC","WEB"]
-            if (!new[] { "BO", "LIB", "PROC", "RPT", "SEC", "WEB" }.Contains(nameTokens[1])) return fileName;
+            if (!new[] { "BO", "LIB", "PROC", "RPT", "SEC", "WEB" }.Contains(nameTokens[1]))
+                return fileName;
 
             nameTokens[2] = nameTokens[2].Replace("SVC", "");
             fileName = nameTokens[0] + ".Contracts." + nameTokens[1] + "." + nameTokens[2] + ".dll";
@@ -78,7 +82,8 @@ namespace KineticValidator
 
         private string[] GetMethodsSafely()
         {
-            if (_assembly == null) return null;
+            if (_assembly == null)
+                return null;
 
             try
             {
@@ -92,7 +97,8 @@ namespace KineticValidator
                     Utilities.SaveDevLog(lException.Message + Environment.NewLine);
             }
 
-            if (_typeSafely == null) return null;
+            if (_typeSafely == null)
+                return null;
 
             string[] methods;
             try
@@ -110,7 +116,8 @@ namespace KineticValidator
 
         private string[] GetParamsSafely(string methodName)
         {
-            if (_assembly == null || _typeSafely == null || _assemblyLoadRestrictions) return null;
+            if (_assembly == null || _typeSafely == null || _assemblyLoadRestrictions)
+                return null;
 
             string[] paramList = null;
 
@@ -131,14 +138,16 @@ namespace KineticValidator
 
         public string[] GetMethods()
         {
-            if (_allMethodsInfo == null) _allMethodsInfo = GetMethodTree();
+            if (_allMethodsInfo == null)
+                _allMethodsInfo = GetMethodTree();
 
             return _allMethodsInfo.Select(n => n.Key).ToArray();
         }
 
         public string[] GetParameters(string methodName)
         {
-            if (_allMethodsInfo == null) _allMethodsInfo = GetMethodTree();
+            if (_allMethodsInfo == null)
+                _allMethodsInfo = GetMethodTree();
 
             _allMethodsInfo.TryGetValue(methodName, out var methodTree);
             return methodTree?.ToArray();
@@ -146,7 +155,23 @@ namespace KineticValidator
 
         private Dictionary<string, Dictionary<string, string[]>> GetDataSetTree()
         {
-            if (_typeSafely == null || _assemblyLoadRestrictions) return null;
+            if (_assembly == null)
+                return null;
+
+            try
+            {
+                _typeSafely = _assembly.GetTypes().FirstOrDefault(t => t.Name.EndsWith("SvcContract") && t.IsPublic);
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                _assemblyLoadRestrictions = true;
+                _typeSafely = ex.Types.FirstOrDefault(t => t.Name.EndsWith("SvcContract") && t.IsPublic);
+                foreach (var lException in ex.LoaderExceptions)
+                    Utilities.SaveDevLog(lException.Message + Environment.NewLine);
+            }
+
+            if (_typeSafely == null || _assemblyLoadRestrictions)
+                return null;
 
             var fullEntityList = _typeSafely.Assembly.DefinedTypes.ToArray();
             var dataSets = fullEntityList.Where(n => n.Name.EndsWith("DataSet") && !n.Name.StartsWith("UpdExt"))
@@ -170,7 +195,14 @@ namespace KineticValidator
                     dataTableTree.Add(tableName, fieldNames?.ToArray());
                 }
 
-                dataSetTree.Add(dataSetName, dataTableTree);
+                try
+                {
+                    dataSetTree.Add(dataSetName, dataTableTree);
+                }
+                catch (Exception Ex)
+                {
+
+                }
             }
 
             return dataSetTree;
@@ -178,16 +210,19 @@ namespace KineticValidator
 
         public string[] GetDataSets()
         {
-            if (_allDataSetsInfo == null) _allDataSetsInfo = GetDataSetTree();
+            if (_allDataSetsInfo == null)
+                _allDataSetsInfo = GetDataSetTree();
 
             return _allDataSetsInfo?.Select(n => n.Key).ToArray();
         }
 
         public string[] GetTables(string dataSetName)
         {
-            if (_allDataSetsInfo == null) _allDataSetsInfo = GetDataSetTree();
+            if (_allDataSetsInfo == null)
+                _allDataSetsInfo = GetDataSetTree();
 
-            if (_allDataSetsInfo == null) return null;
+            if (_allDataSetsInfo == null)
+                return null;
 
             _allDataSetsInfo.TryGetValue(dataSetName, out var tableTree);
             return tableTree?.Select(n => n.Key).ToArray();
@@ -195,9 +230,11 @@ namespace KineticValidator
 
         public string[] GetFields(string dataSetName, string tableName)
         {
-            if (_allDataSetsInfo == null) _allDataSetsInfo = GetDataSetTree();
+            if (_allDataSetsInfo == null)
+                _allDataSetsInfo = GetDataSetTree();
 
-            if (_allDataSetsInfo == null) return null;
+            if (_allDataSetsInfo == null)
+                return null;
 
             _allDataSetsInfo.TryGetValue(dataSetName, out var tableTree);
             string[] fields = null;
