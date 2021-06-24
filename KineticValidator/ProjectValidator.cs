@@ -10,7 +10,6 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
 
 using JsonPathParserLib;
@@ -56,8 +55,8 @@ namespace KineticValidator
             new Dictionary<string, Func<string, IEnumerable<ReportItem>>>
             {
                 {"File list validation", RunValidation},
-                {"Serialization validation", DeserializeFile},
-                {"JSON parser validation", ParseJsonObject},
+                {"Deserialization validation", DeserializeFile},
+                {"JSON properties processing", ParseJsonObject},
                 {"Schema validation", SchemaValidation},
                 {"Redundant files", RedundantFiles},
                 {"National characters", ValidateFileChars},
@@ -69,7 +68,6 @@ namespace KineticValidator
                 {"Possible patches", PossiblePatchValues},
                 {"Hard-coded message strings", HardCodedStrings},
                 {"Possible strings", PossibleStringsValues},
-                {"Apply patches", PatchAllFields},
                 {"Empty string names", EmptyStringNames},
                 {"Empty string values", EmptyStringValues},
                 {"Redundant strings", RedundantStrings},
@@ -193,6 +191,9 @@ namespace KineticValidator
             //SchemaList = new Dictionary<string, string>();
             //KnownServices = new Dictionary<string, Dictionary<string, List<string>>>();
             //KnownDataSets = new ConcurrentDictionary<string, Dictionary<string, Dictionary<string, string[]>>>();
+
+            if (_patchAllFields)
+                PatchAllFields();
         }
 
         #region Helping methods
@@ -719,6 +720,37 @@ namespace KineticValidator
             }
 
             return list;
+        }
+
+        private static void PatchAllFields()
+        {
+            if (_patchValues == null || _patchValues.Count == 0)
+                _patchValues = CollectPatchValues();
+
+            var startTime = DateTime.Now;
+
+            var valuesList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.Value.Contains('%'))
+                .ToArray();
+
+            if (valuesList.Any())
+            {
+                foreach (var item in valuesList)
+                {
+                    foreach (var patch in _patchValues)
+                    {
+                        item.PatchedValue = item.PatchedValue.Replace(patch.Key, patch.Value);
+                        if (!item.PatchedValue.Contains('%'))
+                            break;
+                    }
+                }
+            }
+
+            _allFieldsPatched = true;
+
+            Console.WriteLine($"PatchAllFields execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
         }
 
         private struct RestMethodInfo
@@ -1338,25 +1370,15 @@ namespace KineticValidator
 
             foreach (var item in propertyCollection)
             {
-                var charNum = 1;
-                var chars = new List<int>();
-                foreach (var ch in item.Name)
+                var charPos = new StringBuilder();
+                for (var i = 0; i < item.Name.Length; i++)
                 {
-                    if (ch > 127)
-                        chars.Add(charNum);
-
-                    charNum++;
+                    if (item.Name[i] > 127)
+                        charPos.Append($"\'0x{((int)item.Name[i]).ToString("x")}\'[{i}] , ");
                 }
 
-                if (chars.Count > 0)
+                if (charPos.Length > 0)
                 {
-                    var charPos = new StringBuilder();
-                    foreach (var ch in chars)
-                        if (charPos.Length > 0)
-                            charPos.Append(", " + ch);
-                        else
-                            charPos.Append(ch);
-
                     var reportItem = new ReportItem
                     {
                         ProjectName = _projectName,
@@ -1365,7 +1387,7 @@ namespace KineticValidator
                         LineId = item.LineId.ToString(),
                         JsonPath = item.JsonPath,
                         LineNumber = item.SourceLineNumber.ToString(),
-                        Message = $"Json property \"{item.Name}\" has non-ASCII chars at position(s) {charPos}",
+                        Message = $"Json property \"{item.Name}\" has non-ASCII chars at position(s): {charPos}",
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Error.ToString(),
                         Source = methodName
@@ -1373,25 +1395,15 @@ namespace KineticValidator
                     report.Add(reportItem);
                 }
 
-                charNum = 1;
-                chars = new List<int>();
-                foreach (var ch in item.Value)
+                charPos.Clear();
+                for (var i = 0; i < item.Value.Length; i++)
                 {
-                    if (ch > 127)
-                        chars.Add(charNum);
-
-                    charNum++;
+                    if (item.Value[i] > 127)
+                        charPos.Append($"\'0x{((int)item.Value[i]).ToString("x")}\'[{i}] , ");
                 }
 
-                if (chars.Count > 0)
+                if (charPos.Length > 0)
                 {
-                    var charPos = new StringBuilder();
-                    foreach (var ch in chars)
-                        if (charPos.Length > 0)
-                            charPos.Append(", " + ch);
-                        else
-                            charPos.Append(ch);
-
                     var reportItem = new ReportItem
                     {
                         ProjectName = _projectName,
@@ -1400,7 +1412,7 @@ namespace KineticValidator
                         LineId = item.LineId.ToString(),
                         JsonPath = item.JsonPath,
                         LineNumber = item.SourceLineNumber.ToString(),
-                        Message = $"JSON property value \"{item.Value}\" has non-ASCII chars at position(s) {charPos}",
+                        Message = $"JSON property value \"{item.Value}\" has non-ASCII chars at position(s): {charPos}",
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Warning.ToString(),
                         Source = methodName
@@ -1794,44 +1806,8 @@ namespace KineticValidator
         }
 
         // validations which works with patches applied
-        private static IEnumerable<ReportItem> PatchAllFields(string methodName)
-        {
-            if (_patchValues == null || _patchValues.Count == 0)
-                _patchValues = CollectPatchValues();
-
-            var startTime = DateTime.Now;
-
-            var valuesList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && n.Value.Contains('%'))
-                .ToArray();
-
-            if (valuesList.Any())
-            {
-                foreach (var item in valuesList)
-                {
-                    foreach (var patch in _patchValues)
-                    {
-                        item.PatchedValue = item.PatchedValue.Replace(patch.Key, patch.Value);
-                        if (!item.PatchedValue.Contains('%'))
-                            break;
-                    }
-                }
-            }
-
-            _allFieldsPatched = true;
-
-            Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
-            return new List<ReportItem>();
-        }
-
         private static IEnumerable<ReportItem> EmptyStringNames(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var emptyStringsList = _jsonPropertiesCollection
@@ -1863,9 +1839,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> EmptyStringValues(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var emptyStringsList = _jsonPropertiesCollection
@@ -1897,9 +1870,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> RedundantStrings(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var stringsList = _jsonPropertiesCollection
@@ -1937,9 +1907,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> CallNonExistingStrings(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var stringsList = _jsonPropertiesCollection
@@ -1983,9 +1950,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> OverridingStrings(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var duplicateStringsList = _jsonPropertiesCollection
@@ -2043,9 +2007,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> EmptyEventNames(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var emptyIdsList = _jsonPropertiesCollection
@@ -2077,9 +2038,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> EmptyEvents(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var emptyEventsList = _jsonPropertiesCollection
@@ -2118,9 +2076,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> OverridingEvents(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var duplicateIdsList = _jsonPropertiesCollection
@@ -2219,9 +2174,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> RedundantEvents(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var eventsList = _jsonPropertiesCollection
@@ -2296,9 +2248,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> CallNonExistingEvents(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var eventsList = _jsonPropertiesCollection
@@ -2348,9 +2297,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> EmptyDataViewNames(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var emptyDataViewList = _jsonPropertiesCollection
@@ -2384,9 +2330,6 @@ namespace KineticValidator
         // rework - not all cases managed
         private static IEnumerable<ReportItem> RedundantDataViews(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var dataViewList = _jsonPropertiesCollection
@@ -2425,9 +2368,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> CallNonExistingDataViews(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var dataViewList = _jsonPropertiesCollection
@@ -2525,9 +2465,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> OverridingDataViews(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var duplicateViewsList = _jsonPropertiesCollection
@@ -2592,9 +2529,6 @@ namespace KineticValidator
         // rework - not all cases managed
         private static IEnumerable<ReportItem> CallNonExistingDataTables(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var dataTableList = _jsonPropertiesCollection
@@ -2658,9 +2592,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> EmptyRuleNames(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var emptyRulesList = _jsonPropertiesCollection
@@ -2692,9 +2623,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> OverridingRules(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var duplicateRulesList = _jsonPropertiesCollection
@@ -2751,9 +2679,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> EmptyToolNames(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var emptyToolsList = _jsonPropertiesCollection
@@ -2785,9 +2710,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> OverridingTools(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var duplicateToolsList = _jsonPropertiesCollection
@@ -2844,9 +2766,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> MissingForms(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var formsList = _jsonPropertiesCollection
@@ -2957,9 +2876,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> MissingSearches(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var searchesList = _jsonPropertiesCollection
@@ -3068,9 +2984,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> JsCode(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var jsPatternsList = _jsonPropertiesCollection
@@ -3100,9 +3013,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> JsDataViewCount(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var jsPatternsList = _jsonPropertiesCollection
@@ -3133,9 +3043,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> IncorrectDvConditionViewName(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var dvConditionsList = _jsonPropertiesCollection
@@ -3210,9 +3117,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> IncorrectRestCalls(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var restCallsList = _jsonPropertiesCollection
@@ -3433,9 +3337,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> IncorrectFieldUsages(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var report = new List<ReportItem>();
@@ -3488,11 +3389,11 @@ namespace KineticValidator
                 if (KineticDataView.Name == "result")
                 {
                     localDataViews.Add(KineticDataView.PatchedValue);
-
                     var newView = new KineticDataView()
                     {
                         DataViewName = KineticDataView.PatchedValue
                     };
+
                     _formDataViews.Add(newView);
                 }
                 // real dataview
@@ -3563,7 +3464,7 @@ namespace KineticValidator
                             .Select(n => n.Value?.FirstOrDefault(m => m.Key == srvDataSetName))?
                             .FirstOrDefault(n => n?.Key == srvDataSetName);
 
-                        if (!serverDataSet.HasValue)
+                        if (!serverDataSet.HasValue || serverDataSet.Value.Key == null)
                         {
                             var newReport = new ReportItem
                             {
@@ -3584,7 +3485,7 @@ namespace KineticValidator
                         {
                             var serverTable = serverDataSet?.Value?.FirstOrDefault(n => n.Key == srvTableName);
 
-                            if (!serverTable.HasValue)
+                            if (serverTable == null || serverTable.Value.Key == null)
                             {
                                 var newReport = new ReportItem
                                 {
@@ -3599,12 +3500,18 @@ namespace KineticValidator
                                     Severity = ImportanceEnum.Error.ToString(),
                                     Source = methodName
                                 };
+
                                 report.Add(newReport);
                             }
-                            newView.Fields.AddRange(serverTable?.Value);
+                            else
+                            {
+                                if (serverTable.Value.Value != null)
+                                {
+                                    newView.Fields.AddRange(serverTable?.Value);
+                                }
+                            }
+                            _formDataViews.Add(newView);
                         }
-
-                        _formDataViews.Add(newView);
                     }
                     // local dataView with no server source
                     else
@@ -3621,7 +3528,6 @@ namespace KineticValidator
                             DataViewName = KineticDataView.PatchedValue,
                             AdditionalFields = additionalColumnsList,
                         };
-
                         _formDataViews.Add(newView);
                     }
                 }
@@ -3645,7 +3551,9 @@ namespace KineticValidator
                 .GroupBy(n => n[0]);*/
 
             //check every value field for a {dataView.field} pattern and check it certain combination exists
-            foreach (var item in _jsonPropertiesCollection.Where(n => n.ItemType == JsonItemType.Property))
+            foreach (var item in _jsonPropertiesCollection.Where(n =>
+            n.ItemType == JsonItemType.Property
+            && !n.Shared))
             {
                 var fields = GetTableField(item.PatchedValue).Where(n => n.IndexOfAny(new[] { '%', '{', '}' }) <= 0);
                 foreach (var field in fields)
@@ -3695,9 +3603,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> MissingLayoutIds(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var layoutIdList = _jsonPropertiesCollection
@@ -3739,9 +3644,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> IncorrectEventExpression(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var expressionList = _jsonPropertiesCollection
@@ -3787,9 +3689,6 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> IncorrectRuleConditions(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var conditionList = _jsonPropertiesCollection
@@ -3830,9 +3729,6 @@ namespace KineticValidator
         // is it really incorrect?
         private static IEnumerable<ReportItem> IncorrectLayoutIds(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var layoutIdList = _jsonPropertiesCollection
@@ -3873,9 +3769,6 @@ namespace KineticValidator
         // is it really incorrect?
         private static IEnumerable<ReportItem> IncorrectTabIds(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var tabIdsList = _jsonPropertiesCollection
@@ -3922,9 +3815,6 @@ namespace KineticValidator
         // is it really incorrect?
         private static IEnumerable<ReportItem> DuplicateGuiDs(string methodName)
         {
-            while (_patchAllFields && !_allFieldsPatched)
-                Thread.Sleep(1);
-
             var startTime = DateTime.Now;
 
             var item2 = _jsonPropertiesCollection

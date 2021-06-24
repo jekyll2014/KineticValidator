@@ -223,6 +223,7 @@ namespace KineticValidator
             checkBox_reformatJson.Checked = _reformatJson = Settings.Default.ReformatJson;
             checkBox_showPreview.Checked = _showPreview = Settings.Default.ShowPreview;
             checkBox_vsCode.Checked = _useVsCode = Settings.Default.UseVsCode;
+            checkBox_applyPatches.Checked = _patchAllFields = Settings.Default.ApplyPatches;
 
             foreach (var validator in _validatorsList)
             {
@@ -261,6 +262,7 @@ namespace KineticValidator
             Settings.Default.UseVsCode = _useVsCode;
             Settings.Default.SaveTmpFiles = _saveTmpFiles;
             Settings.Default.SaveReport = _saveReport;
+            Settings.Default.ApplyPatches = _patchAllFields;
             Settings.Default.MainWindowPositionX = Location.X;
             Settings.Default.MainWindowPositionY = Location.Y;
             Settings.Default.MainWindowWidth = Width;
@@ -595,6 +597,11 @@ namespace KineticValidator
             _useVsCode = checkBox_vsCode.Checked;
         }
 
+        private void checkBox_applyPatches_CheckedChanged(object sender, EventArgs e)
+        {
+            _patchAllFields = checkBox_applyPatches.Checked;
+        }
+
         #endregion
 
         #region Helpers
@@ -739,15 +746,13 @@ namespace KineticValidator
                     i1++;
                 });
 
-            // a fast way to check if user has selected "Apply patches"
-            _patchAllFields = _validatorsList.ContainsKey("Apply patches");
-
             // initialize validator settings
             InitValidator(deserializeFileReportsCollection,
                 parseJsonObjectReportsCollection,
                 runValidationReportsCollection,
                 processedFilesList,
                 fullInit);
+
             // run every validator selected
             var reportsCollection = new BlockingCollection<ReportItem>();
             Parallel.ForEach(_validatorsList, validator =>

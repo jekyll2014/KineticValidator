@@ -361,5 +361,17 @@ namespace KineticValidator.Properties {
                 this["UseVsCode"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool ApplyPatches {
+            get {
+                return ((bool)(this["ApplyPatches"]));
+            }
+            set {
+                this["ApplyPatches"] = value;
+            }
+        }
     }
 }

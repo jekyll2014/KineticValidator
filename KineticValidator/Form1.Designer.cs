@@ -54,6 +54,7 @@ namespace KineticValidator
             this.removeThisErrorToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.alwaysIgnoreThisErrorToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.folderBrowserDialog1 = new System.Windows.Forms.FolderBrowserDialog();
+            this.checkBox_applyPatches = new System.Windows.Forms.CheckBox();
             this.tabControl1.SuspendLayout();
             this.tabPage_DataCollection.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer1)).BeginInit();
@@ -95,6 +96,7 @@ namespace KineticValidator
             // 
             // splitContainer1.Panel1
             // 
+            this.splitContainer1.Panel1.Controls.Add(this.checkBox_applyPatches);
             this.splitContainer1.Panel1.Controls.Add(this.checkBox_vsCode);
             this.splitContainer1.Panel1.Controls.Add(this.checkBox_saveReport);
             this.splitContainer1.Panel1.Controls.Add(this.checkBox_saveFiles);
@@ -179,9 +181,9 @@ namespace KineticValidator
             | System.Windows.Forms.AnchorStyles.Right)));
             this.checkedListBox_validators.CheckOnClick = true;
             this.checkedListBox_validators.FormattingEnabled = true;
-            this.checkedListBox_validators.Location = new System.Drawing.Point(-3, 312);
+            this.checkedListBox_validators.Location = new System.Drawing.Point(-3, 327);
             this.checkedListBox_validators.Name = "checkedListBox_validators";
-            this.checkedListBox_validators.Size = new System.Drawing.Size(245, 109);
+            this.checkedListBox_validators.Size = new System.Drawing.Size(245, 94);
             this.checkedListBox_validators.TabIndex = 2;
             this.checkedListBox_validators.ItemCheck += new System.Windows.Forms.ItemCheckEventHandler(this.CheckedListBox_validators_ItemCheck);
             this.checkedListBox_validators.Leave += new System.EventHandler(this.CheckedListBox_validators_Leave);
@@ -334,6 +336,17 @@ namespace KineticValidator
             this.alwaysIgnoreThisErrorToolStripMenuItem.Text = "Always ignore this error";
             this.alwaysIgnoreThisErrorToolStripMenuItem.Click += new System.EventHandler(this.AlwaysIgnoreThisErrorToolStripMenuItem_Click);
             // 
+            // checkBox_applyPatches
+            // 
+            this.checkBox_applyPatches.AutoSize = true;
+            this.checkBox_applyPatches.Location = new System.Drawing.Point(0, 304);
+            this.checkBox_applyPatches.Name = "checkBox_applyPatches";
+            this.checkBox_applyPatches.Size = new System.Drawing.Size(93, 17);
+            this.checkBox_applyPatches.TabIndex = 8;
+            this.checkBox_applyPatches.Text = "Apply patches";
+            this.checkBox_applyPatches.UseVisualStyleBackColor = true;
+            this.checkBox_applyPatches.CheckedChanged += new System.EventHandler(this.checkBox_applyPatches_CheckedChanged);
+            // 
             // MainForm
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
@@ -384,6 +397,7 @@ namespace KineticValidator
         private System.Windows.Forms.CheckBox checkBox_saveReport;
         private System.Windows.Forms.Button button_selectAssemblyFolder;
         private System.Windows.Forms.CheckBox checkBox_vsCode;
+        private System.Windows.Forms.CheckBox checkBox_applyPatches;
     }
 }
 
