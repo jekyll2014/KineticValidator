@@ -2095,9 +2095,9 @@ namespace KineticValidator
             foreach (var dup in duplicateIdsList)
             {
                 // duplicate "id" within project (not including shared imports)
-                var projectDuplicates = dup.Where(n => !n.Shared).ToList();
-                if (projectDuplicates.Count > 1)
-                    for (var i = projectDuplicates.Count - 1; i > 0; i--)
+                var projectDuplicates = dup.Where(n => !n.Shared).ToArray();
+                if (projectDuplicates.Length > 1)
+                    for (var i = projectDuplicates.Length - 1; i > 0; i--)
                     {
                         var reportItem = new ReportItem
                         {
@@ -2183,14 +2183,14 @@ namespace KineticValidator
                     && !n.Shared
                     && n.Name == "id"
                     && n.Parent == "events"
-                    && !_jsonPropertiesCollection.Any(m =>
-                    m.ItemType == JsonItemType.Property
-                    && m.FileType == KineticContentType.Events
-                    && m.FullFileName == n.FullFileName
-                    && m.ParentPath == n.ParentPath + ".trigger"
-                    )
                     && !string.IsNullOrEmpty(n.PatchedValue)
-                    && n.PatchedValue.IndexOfAny(new char[] { '%', '{', '}' }) < 0).ToList();
+                    && n.PatchedValue.IndexOfAny(new char[] { '%', '{', '}' }) < 0
+                    && !_jsonPropertiesCollection.Any(m =>
+                        m.ItemType == JsonItemType.Property
+                        && m.FileType == KineticContentType.Events
+                        && m.FullFileName == n.FullFileName
+                        && m.ParentPath == n.ParentPath + ".trigger"))
+                .ToArray();
 
             var startTime1 = DateTime.Now;
 
@@ -2199,33 +2199,22 @@ namespace KineticValidator
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
                     && n.FileType == KineticContentType.Events
-                    && (
-                    (n.Name == "value"
-                    && _jsonPropertiesCollection.Any(m =>
-                        m.ItemType == JsonItemType.Property
-                        && m.FileType == KineticContentType.Events
-                        && m.FullFileName == n.FullFileName
-                        && m.ParentPath == n.ParentPath
-                        && m.Name == "type"
-                        && m.PatchedValue == "event-next"))
-
-                    || (n.Name == "iterativeEvent")
-
-                    || (!n.Shared
-                    && n.Name == "id"
-                    && n.Parent == "events"
-                    && !_jsonPropertiesCollection.Any(m =>
-                    m.ItemType == JsonItemType.Property
-                    && m.FileType == KineticContentType.Events
-                    && m.FullFileName == n.FullFileName
-                    && m.ParentPath == n.ParentPath + ".trigger"))
-                    )
+                    && ((n.Name == "value"
+                            && _jsonPropertiesCollection.Any(m =>
+                                m.ItemType == JsonItemType.Property
+                                && m.FileType == KineticContentType.Events
+                                && m.FullFileName == n.FullFileName
+                                && m.ParentPath == n.ParentPath
+                                && m.Name == "type"
+                                && m.PatchedValue == "event-next"))
+                        || (n.Name == "iterativeEvent"))
                     && !string.IsNullOrEmpty(n.PatchedValue)
-                    && n.PatchedValue.IndexOfAny(new char[] { '%', '{', '}' }) < 0).ToList();
+                    && n.PatchedValue.IndexOfAny(new char[] { '%', '{', '}' }) < 0)
+                .ToArray();
 
             var startTime2 = DateTime.Now;
 
-            var nonUsedEvent = eventsList.Where(n => eventCallList.All(m => m.PatchedValue != n.PatchedValue)).ToList();
+            var nonUsedEvent = eventsList.Where(n => eventCallList.All(m => m.PatchedValue != n.PatchedValue)).ToArray();
 
             var report = nonUsedEvent.Select(eventItem => new ReportItem
             {
