@@ -384,14 +384,14 @@ namespace JsonEditorForm
             //Text += fullFileName;
             _fileName = fullFileName;
 
-            var fileContent = "";
+            string fileContent;
             try
             {
                 fileContent = File.ReadAllText(fullFileName);
             }
-            catch (Exception ex)
+            catch
             {
-
+                return false;
             }
 
             _textArea.Text = fileContent;
@@ -420,14 +420,14 @@ namespace JsonEditorForm
             //Text += fullFileName;
             _fileName = fullFileName;
 
-            var fileContent = "";
+            string fileContent;
             try
             {
                 fileContent = File.ReadAllText(fullFileName);
             }
-            catch (Exception ex)
+            catch
             {
-
+                return false;
             }
 
             _textArea.Text = SingleLineBrackets
@@ -476,7 +476,7 @@ namespace JsonEditorForm
 
                 File.WriteAllText(fullFileName, _textArea.Text);
             }
-            catch (Exception Ex)
+            catch
             {
                 return false;
             }

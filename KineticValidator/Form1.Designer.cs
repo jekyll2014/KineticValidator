@@ -185,7 +185,6 @@ namespace KineticValidator
             this.checkedListBox_validators.Name = "checkedListBox_validators";
             this.checkedListBox_validators.Size = new System.Drawing.Size(245, 94);
             this.checkedListBox_validators.TabIndex = 2;
-            this.checkedListBox_validators.ItemCheck += new System.Windows.Forms.ItemCheckEventHandler(this.CheckedListBox_validators_ItemCheck);
             this.checkedListBox_validators.Leave += new System.EventHandler(this.CheckedListBox_validators_Leave);
             // 
             // checkBox_reformatJson
@@ -310,7 +309,6 @@ namespace KineticValidator
             this.dataGridView_report.Name = "dataGridView_report";
             this.dataGridView_report.Size = new System.Drawing.Size(786, 418);
             this.dataGridView_report.TabIndex = 0;
-            this.dataGridView_report.CellDoubleClick += new System.Windows.Forms.DataGridViewCellEventHandler(this.DataGridView_report_CellDoubleClick);
             this.dataGridView_report.CellMouseDown += new System.Windows.Forms.DataGridViewCellMouseEventHandler(this.DataGridView_report_CellMouseDown);
             this.dataGridView_report.KeyDown += new System.Windows.Forms.KeyEventHandler(this.DataGridView_report_KeyDown);
             // 
@@ -345,7 +343,7 @@ namespace KineticValidator
             this.checkBox_applyPatches.TabIndex = 8;
             this.checkBox_applyPatches.Text = "Apply patches";
             this.checkBox_applyPatches.UseVisualStyleBackColor = true;
-            this.checkBox_applyPatches.CheckedChanged += new System.EventHandler(this.checkBox_applyPatches_CheckedChanged);
+            this.checkBox_applyPatches.CheckedChanged += new System.EventHandler(this.CheckBox_applyPatches_CheckedChanged);
             // 
             // MainForm
             // 

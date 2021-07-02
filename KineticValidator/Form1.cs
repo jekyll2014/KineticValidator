@@ -175,7 +175,7 @@ namespace KineticValidator
 
         #region GUI
 
-        public MainForm(string[] args)
+        public MainForm(IReadOnlyCollection<string> args)
         {
             _initialProjectFiles = Settings.Default.InitialProjectFiles.Split(new[] { SplitChar }, StringSplitOptions.RemoveEmptyEntries);
             _systemMacros = Settings.Default.SystemMacros.Split(new[] { SplitChar }, StringSplitOptions.RemoveEmptyEntries).Select(n => n.Trim()).ToArray();
@@ -197,7 +197,7 @@ namespace KineticValidator
 
             _checkedValidators = Settings.Default.EnabledValidators.Trim(SplitChar).Split(new[] { SplitChar }, StringSplitOptions.RemoveEmptyEntries).ToList();
 
-            if (args.Length > 0)
+            if (args.Count > 0)
             {
                 RunCommandLine(args);
                 return;
@@ -433,14 +433,6 @@ namespace KineticValidator
                 Clipboard.SetText(dataGridView_report.CurrentCell.Value.ToString());
         }
 
-        private void DataGridView_report_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
-        {
-            if (!(sender is DataGridView dataGrid) || e.RowIndex < 0 || e.ColumnIndex < 0)
-                return;
-
-            //OpenFile(e.RowIndex, e.ColumnIndex, true);
-        }
-
         private void OnClosing1(object sender, CancelEventArgs e)
         {
             if (sender is Form s)
@@ -506,7 +498,6 @@ namespace KineticValidator
             if (!ignoreReportsCollection.Any(n => n.Equals(newReport)))
             {
                 ignoreReportsCollection.Add(newReport);
-                //dataGridView_report.Rows.Remove(currentRow);
                 _reportTable.Rows.RemoveAt(rowNum);
 
                 if (!JsonIo.SaveJson(ignoreReportsCollection, ignoreFile, true))
@@ -541,10 +532,6 @@ namespace KineticValidator
                     _checkedValidators.Add(v.Method.Name);
         }
 
-        private void CheckedListBox_validators_ItemCheck(object sender, ItemCheckEventArgs e)
-        {
-        }
-
         private void DataGridView_report_SelectionChanged(object sender, EventArgs e)
         {
             if (dataGridView_report.SelectedCells.Count <= 0)
@@ -557,7 +544,7 @@ namespace KineticValidator
                 || _oldColumn != (int)ReportColumns.LineId && newColumn == (int)ReportColumns.LineId
                 || _oldRow != newRow)
             {
-                OpenFile(newRow, newColumn, false);
+                OpenFile(newRow, newColumn);
                 dataGridView_report.Focus();
                 _oldRow = newRow;
                 _oldColumn = newColumn;
@@ -597,7 +584,7 @@ namespace KineticValidator
             _useVsCode = checkBox_vsCode.Checked;
         }
 
-        private void checkBox_applyPatches_CheckedChanged(object sender, EventArgs e)
+        private void CheckBox_applyPatches_CheckedChanged(object sender, EventArgs e)
         {
             _patchAllFields = checkBox_applyPatches.Checked;
         }
@@ -825,14 +812,6 @@ namespace KineticValidator
             dynamic jsonObject;
             try
             {
-                /*var jsonSettings = new JsonSerializerSettings
-                {
-                    Formatting = Formatting.None,
-                    
-                };
-
-                jsonObject = JsonConvert.DeserializeObject(jsonStr, jsonSettings);*/
-
                 jsonObject = JObject.Parse(jsonStr,
                     new JsonLoadSettings
                     {
@@ -911,7 +890,6 @@ namespace KineticValidator
                     var propValue = "";
                     var name = jProperty.Name;
 
-                    var lineInfo = (IJsonLineInfo)jProperty;
                     var lineNumber = ((IJsonLineInfo)jProperty).LineNumber;
 
                     if (jValue is JValue jPropertyValue)
@@ -964,7 +942,7 @@ namespace KineticValidator
                     // try to import file
                     if (name == FileTagName)
                     {
-                        var importFileName = "";
+                        string importFileName;
                         if (_folderType == FolderType.Unknown) //deployment folder
                         {
                             var report = new ReportItem
@@ -1598,8 +1576,8 @@ namespace KineticValidator
                     }
 
                     ShowPreviewEditor(i, fileTypes[i], null, -1, -1, -1, newEditor);
-                    var startPos = _editors[i].EditorText.IndexOf(lines[i] + "] ");
-                    var endPos = _editors[i].EditorText.IndexOf(Environment.NewLine, startPos + 1);
+                    var startPos = _editors[i].EditorText.IndexOf(lines[i] + "] ", StringComparison.Ordinal);
+                    var endPos = _editors[i].EditorText.IndexOf(Environment.NewLine, startPos + 1, StringComparison.Ordinal);
                     ShowPreviewEditor(i, fileTypes[i], null, -1, startPos, endPos);
                 }
             }
@@ -1675,10 +1653,10 @@ namespace KineticValidator
 
                 if (!newWindow)
                 {
-                    if (editorNumber == 1)
+                    if (editorNumber == 0)
                         textEditor.Closing += OnClosing1;
                     else
-                        textEditor.Closing += OnClosing1;
+                        textEditor.Closing += OnClosing2;
                 }
 
                 fileLoaded = textEditor.LoadJsonFromFile(fileName);
@@ -1811,7 +1789,7 @@ namespace KineticValidator
             return fileName;
         }
 
-        private string GetFileFromRef(string refString)
+        private static string GetFileFromRef(string refString)
         {
             var pos = refString.IndexOf('#');
             return pos > 0 ? refString.Substring(0, pos) : "";
@@ -1928,14 +1906,14 @@ namespace KineticValidator
             }
         }
 
-        private int GetLineNumberForPath(string fullFileName, string jsonPath)
+        private static int GetLineNumberForPath(string fullFileName, string jsonPath)
         {
             string jsonStr;
             try
             {
                 jsonStr = File.ReadAllText(fullFileName);
             }
-            catch (Exception ex)
+            catch
             {
                 return 0;
             }

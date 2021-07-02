@@ -13,14 +13,13 @@ namespace KineticValidator
         private Assembly _assembly;
         private Type _typeSafely;
         private bool _assemblyLoadRestrictions;
-        private Dictionary<string, string[]> _allMethodsInfo; // method / paremeters
+        private Dictionary<string, string[]> _allMethodsInfo; // [ method , paremeters[] ]
         private Dictionary<string, Dictionary<string, string[]>> _allDataSetsInfo;
-        public bool IsLoaded => !(_assembly == null);
 
-        public Dictionary<string, string[]> AllMethodsInfo => _allMethodsInfo ?? (_allMethodsInfo = GetMethodTree());
+        public Dictionary<string, string[]> AllMethodsInfo => _allMethodsInfo ?? (_allMethodsInfo = GetMethodTree()); // [ method, parameters[] ]
 
         public Dictionary<string, Dictionary<string, string[]>> AllDataSetsInfo =>
-            _allDataSetsInfo ?? (_allDataSetsInfo = GetDataSetTree());
+            _allDataSetsInfo ?? (_allDataSetsInfo = GetDataSetTree()); // [ tableset, [tables , fields[] ] ]
 
         public bool LoadAssembly(string svcName, string assemblyPath)
         {
@@ -36,8 +35,9 @@ namespace KineticValidator
             {
                 _assembly = Assembly.LoadFile(assemblyFileName);
             }
-            catch (Exception)
+            catch
             {
+                return false;
             }
 
             return true;
@@ -123,6 +123,7 @@ namespace KineticValidator
 
             var method = _typeSafely.GetMethod(methodName);
             if (method != null)
+            {
                 try
                 {
                     var parameters = method.GetParameters();
@@ -132,6 +133,7 @@ namespace KineticValidator
                 {
                     Utilities.SaveDevLog(ex.Message);
                 }
+            }
 
             return paramList;
         }
@@ -199,9 +201,8 @@ namespace KineticValidator
                 {
                     dataSetTree.Add(dataSetName, dataTableTree);
                 }
-                catch (Exception Ex)
+                catch
                 {
-
                 }
             }
 
