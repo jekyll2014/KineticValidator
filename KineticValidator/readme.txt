@@ -46,20 +46,23 @@ Validations implemented:
 	43) Incorrect event expressions - <condition> event expression validation (C# style)
 	44) Incorrect rule conditions - <dataview-condition> event expression and rule condition validation (SQL style)
 	45) !!!Experimental feature!!! Incorrect layout id's - any layouts having "model.id" different from control "id"
-	46) !!!Experimental feature!!! Incorrect tab links - to detect inexistent tab id's (broken by AppStudio). Not very reliable - false alarms on slide-outs.
-	47) !!!Experimental feature!!! Duplicate GUID's - to find GUID duplicates within project scope.
+	46) 'providerModel' mixed with 'clientFilter' - 
+	47) !!!Experimental feature!!! Incorrect tab links - to detect inexistent tab id's (broken by AppStudio). Not very reliable - false alarms on slide-outs.
+	48) !!!Experimental feature!!! Duplicate GUID's - to find GUID duplicates within project scope.
 
 	It is possible to select root projects folder to run mass-validation. Note that it tries to find a project in only one sub-folder level.
 	Program also tries to load report from \program_folder\project_folder\ on project folder selection. This is a previously generated folder so the report can be outdated.
 
 Option flags:
-	"Skip annoying schema errors" - to skip some errors which are false usually (not always) due to our schema files are not consistent/updated.
 	"Ignore HTTPS error" - to bypass HTTPS authentication error if schema server will have incorrect certificate again
-	"Always on top" - to make program and editor(s) window on top of others.
-	"Reformat JSON" - to beautify JSON text in the editor window(s). Note that it takes "file -> JSON object -> formatted text" conversion so some JSON format issues will not be visible in the editor window even if any detected (JSON parser normalizes the content).
+	"Skip annoying schema errors" - to skip some errors which are false usually (not always) due to our schema files are not consistent/updated.
 	"Show preview" - to reload file in editor window(s) on report line selected.
-	"Save report" - save report file in \program_folder\project_folder\.
+	"Use VSCode" - use VSCode editor for preview and file edit.
+	"Reformat JSON" - to beautify JSON text in the editor window(s). Note that it takes "file -> JSON object -> formatted text" conversion so some JSON format issues will not be visible in the editor window even if any detected (JSON parser normalizes the content).
+	"Save JSON report" - save report as JSON file.
 	"Save data files" - keep temporary files in \program_folder\project_folder\.
+	"Always on top" - to make program and editor(s) window on top of others.
+	"Apply patches" - replace '%patch%' usages with actual values.
 
 Program settings:
 	\KineticValidator.exe.config

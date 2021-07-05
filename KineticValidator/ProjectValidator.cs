@@ -99,6 +99,7 @@ namespace KineticValidator
                 {"Incorrect rule conditions", IncorrectRuleConditions},
                 // questionable validations
                 {"Incorrect layout id's", IncorrectLayoutIds},
+                {"'providerModel' mixed with 'clientFilter'", ProviderModelMixedWithClientFilter },
                 {"Incorrect tab links", IncorrectTabIds},
                 {"Duplicate GUID's", DuplicateGuiDs}
             };
@@ -337,6 +338,22 @@ namespace KineticValidator
             var i = parentPath.LastIndexOf('.');
 
             return parentPath.Substring(i + 1);
+        }
+
+        private static string TrimPathEnd(string originalPath, int levels)
+        {
+            for (; levels > 0; levels--)
+            {
+                var pos = originalPath.LastIndexOf('.');
+                if (pos >= 0)
+                {
+                    originalPath = originalPath.Substring(0, pos);
+                }
+                else
+                    break;
+            }
+
+            return originalPath;
         }
 
         private static bool IsTableField(string field)
@@ -627,7 +644,8 @@ namespace KineticValidator
                                  + ", path="
                                  + error.Path);
 
-            if (!(error is ChildSchemaValidationError subErrorCollection)) return errorText.ToString();
+            if (!(error is ChildSchemaValidationError subErrorCollection))
+                return errorText.ToString();
 
             foreach (var subError in subErrorCollection.Errors)
             {
@@ -1038,7 +1056,8 @@ namespace KineticValidator
 
             var operators = new[] { "===", "!==", "==", "!=", "&&", "||", "<=", ">=", "<", ">", "!", "=" };
             var postProcessOperators = new[] { "and", "not", "or" };
-            if (sqlType) operators = new[] { "<>", "<=", ">=", "=", "<", ">" };
+            if (sqlType)
+                operators = new[] { "<>", "<=", ">=", "=", "<", ">" };
 
             var currentToken = new ExpressionToken
             {
@@ -1247,7 +1266,8 @@ namespace KineticValidator
             if (currentToken.Type == TokenType.BracketOpen
                 || currentToken.Type == TokenType.Operator
                 || txtFlag
-                || jsFlag) return ExpressionErrorCode.IncompleteExpression;
+                || jsFlag)
+                return ExpressionErrorCode.IncompleteExpression;
 
             // expression can't start with operator or closing bracket
             if (tokens[0].Type == TokenType.BracketClose
@@ -1301,7 +1321,8 @@ namespace KineticValidator
 
             // all brackets should be closed - not really needed because of the next validation
             if (tokens.Count(n => n.Type == TokenType.BracketOpen) !=
-                tokens.Count(n => n.Type == TokenType.BracketClose)) return ExpressionErrorCode.InconsistentBrackets;
+                tokens.Count(n => n.Type == TokenType.BracketClose))
+                return ExpressionErrorCode.InconsistentBrackets;
 
             // brackets order must be followed
             var counter = 0;
@@ -2581,8 +2602,8 @@ namespace KineticValidator
                         && _jsonPropertiesCollection
                             .Any(m =>
                                 m.FullFileName == n.FullFileName
-                                && m.ParentPath == n.ParentPath.Replace(".param", ".type")
-                                && m.Value == "dataview-condition"))
+                                && m.ParentPath == TrimPathEnd(n.ParentPath, 1) + ".type"
+                                && m.PatchedValue == "dataview-condition"))
                     && !string.IsNullOrEmpty(n.PatchedValue))
                 .GroupBy(n => n.PatchedValue)
                 .Where(n => n.Count() > 1)
@@ -3472,7 +3493,8 @@ namespace KineticValidator
                 .Distinct()
                 .ToArray();
 
-            foreach (var svc in svcList) LoadService(svc, _serverAssembliesPath);
+            foreach (var svc in svcList)
+                LoadService(svc, _serverAssembliesPath);
 
             // collect dataview definitions
             var dataViewList = _jsonPropertiesCollection
@@ -3620,7 +3642,8 @@ namespace KineticValidator
                             }
                             else
                             {
-                                if (serverTable.Value.Value != null) newView.Fields.AddRange(serverTable?.Value);
+                                if (serverTable.Value.Value != null)
+                                    newView.Fields.AddRange(serverTable?.Value);
                             }
 
                             _formDataViews.Add(newView);
@@ -3826,6 +3849,46 @@ namespace KineticValidator
                     LineId = n.condition.LineId.ToString(),
                     JsonPath = n.condition.JsonPath,
                     LineNumber = n.condition.SourceLineNumber.ToString(),
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Error.ToString(),
+                    Source = methodName
+                })
+                .ToArray();
+
+            Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
+
+            return report;
+        }
+
+        private static IEnumerable<ReportItem> ProviderModelMixedWithClientFilter(string methodName)
+        {
+            var startTime = DateTime.Now;
+
+            var layoutIdList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType == KineticContentType.Layout
+                    && !n.Shared
+                    && n.Name == "clientFilter"
+                    && !string.IsNullOrEmpty(n.PatchedValue)
+                    && _jsonPropertiesCollection
+                    .Any(m =>
+                    m.FullFileName == n.FullFileName
+                    && m.JsonPath == TrimPathEnd(n.ParentPath, 1) + ".gridModel.providerModel.svc")
+                    )
+                .ToArray();
+
+            var report = layoutIdList
+                .Select(n => new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = n.FullFileName,
+                    Message =
+                        $"'providerModel' should not be used along with 'clientFilter'",
+                    FileType = n.FileType.ToString(),
+                    LineId = n.LineId.ToString(),
+                    JsonPath = n.JsonPath,
+                    LineNumber = n.SourceLineNumber.ToString(),
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Error.ToString(),
                     Source = methodName
