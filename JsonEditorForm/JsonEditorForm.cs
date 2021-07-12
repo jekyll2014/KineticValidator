@@ -980,12 +980,12 @@ namespace JsonEditorForm
 
         public bool HighlightLines(int startLine, int linesNumber)
         {
-            if (startLine < 0 || startLine >= _textArea.TextLength)
+            if (startLine < 0 || startLine >= _textArea.Lines.Count)
                 return false;
-            if (linesNumber < 0 || linesNumber >= _textArea.TextLength)
+            if (linesNumber <= 0 || linesNumber > _textArea.Lines.Count)
                 return false;
 
-            // Mark the search results with the current indicator
+            linesNumber--;
             var startPosition = _textArea.Lines[startLine].Position;
             var endPosition = _textArea.Lines[startLine + linesNumber].EndPosition;
 
@@ -996,7 +996,7 @@ namespace JsonEditorForm
         {
             if (Utilities.FindTextLines(_textArea.Text, text, out var startLine, out var lineNum))
             {
-                return HighlightLines(startLine, lineNum);
+                return HighlightLines(startLine, lineNum + 1);
             }
 
             return false;

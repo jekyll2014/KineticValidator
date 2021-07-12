@@ -84,6 +84,8 @@ namespace KineticValidator
                 {"Overriding dataViews", OverridingDataViews},
                 {"Non existing dataTables", CallNonExistingDataTables},
                 {"Empty rule names", EmptyRuleNames},
+                {"Empty rules", EmptyRules},
+                {"No condition rules", NoConditionRules},
                 {"Overriding rules", OverridingRules},
                 {"Empty tool names", EmptyToolNames},
                 {"Overriding tools", OverridingTools},
@@ -97,9 +99,10 @@ namespace KineticValidator
                 {"Missing layout id's", MissingLayoutIds},
                 {"Incorrect event expressions", IncorrectEventExpression},
                 {"Incorrect rule conditions", IncorrectRuleConditions},
+                {"'providerModel' mixed with 'clientFilter'", ProviderModelMixedWithClientFilter },
+                {"Property name contains \'.\' char", DottedPropertyNames},
                 // questionable validations
                 {"Incorrect layout id's", IncorrectLayoutIds},
-                {"'providerModel' mixed with 'clientFilter'", ProviderModelMixedWithClientFilter },
                 {"Incorrect tab links", IncorrectTabIds},
                 {"Duplicate GUID's", DuplicateGuiDs}
             };
@@ -2749,6 +2752,104 @@ namespace KineticValidator
             return report;
         }
 
+        private static IEnumerable<ReportItem> EmptyRules(string methodName)
+        {
+            var startTime = DateTime.Now;
+
+            var emptyEventsList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType == KineticContentType.Rules
+                    && n.Name == "id"
+                    && n.Parent == "rules"
+                    && !n.Shared
+                    && !string.IsNullOrEmpty(n.PatchedValue))
+                .ToArray();
+
+            var report = emptyEventsList
+                .Select(id => new
+                {
+                    id,
+                    objectMembers = _jsonPropertiesCollection
+                        .Where(n =>
+                            n.ItemType == JsonItemType.Property
+                            && n.FullFileName == id.FullFileName
+                            && (
+                            (n.ParentPath.Contains(id.ParentPath + ".actions[")
+                            && n.Name == "action")
+                            ||
+                            (n.JsonPath == id.ParentPath + ".actions")
+                            )
+                            )
+                })
+                .Select(n => new { m = n, actionFound = n.objectMembers.Any() })
+                .Where(n => !n.actionFound)
+                .Select(n => new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = n.m.id.FullFileName,
+                    Message = $"Rule \"{n.m.id.PatchedValue}\" has no actions",
+                    FileType = n.m.id.FileType.ToString(),
+                    LineId = n.m.id.LineId.ToString(),
+                    JsonPath = n.m.id.JsonPath,
+                    LineNumber = n.m.id.SourceLineNumber.ToString(),
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Warning.ToString(),
+                    Source = methodName
+                })
+                .ToArray();
+
+            Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
+
+            return report;
+        }
+
+        private static IEnumerable<ReportItem> NoConditionRules(string methodName)
+        {
+            var startTime = DateTime.Now;
+
+            var emptyEventsList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType == KineticContentType.Rules
+                    && n.Name == "id"
+                    && n.Parent == "rules"
+                    && !n.Shared
+                    && !string.IsNullOrEmpty(n.PatchedValue))
+                .ToArray();
+
+            var report = emptyEventsList
+                .Select(id => new
+                {
+                    id,
+                    objectMembers = _jsonPropertiesCollection
+                        .Where(n =>
+                            n.ItemType == JsonItemType.Property
+                            && n.FullFileName == id.FullFileName
+                            && n.Name == "condition")
+                })
+                .Select(n => new { m = n, actionFound = n.objectMembers.Any() })
+                .Where(n => !n.actionFound)
+                .Select(n => new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = n.m.id.FullFileName,
+                    Message = $"Rule \"{n.m.id.PatchedValue}\" has no condition",
+                    FileType = n.m.id.FileType.ToString(),
+                    LineId = n.m.id.LineId.ToString(),
+                    JsonPath = n.m.id.JsonPath,
+                    LineNumber = n.m.id.SourceLineNumber.ToString(),
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Warning.ToString(),
+                    Source = methodName
+                })
+                .ToArray();
+
+            Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
+
+            return report;
+        }
+
         private static IEnumerable<ReportItem> OverridingRules(string methodName)
         {
             var startTime = DateTime.Now;
@@ -3900,6 +4001,82 @@ namespace KineticValidator
             return report;
         }
 
+        private static IEnumerable<ReportItem> DottedPropertyNames(string methodName)
+        {
+            var startTime = DateTime.Now;
+
+            List<string[]> dvFields = new List<string[]>();
+
+            var ruleDataViewList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && !n.Shared
+                    && n.Name.Contains('.')
+                    )
+                .ToArray();
+
+            var report = ruleDataViewList
+                .Select(n => new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = n.FullFileName,
+                    Message =
+                        $"Property name should not contain \'.\' char",
+                    FileType = n.FileType.ToString(),
+                    LineId = n.LineId.ToString(),
+                    JsonPath = n.JsonPath,
+                    LineNumber = n.SourceLineNumber.ToString(),
+                    ValidationType = ValidationTypeEnum.Scheme.ToString(),
+                    Severity = ImportanceEnum.Warning.ToString(),
+                    Source = methodName
+                })
+                .ToArray();
+
+            Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
+
+            return report;
+        }
+
+        private static IEnumerable<ReportItem> MultipleRowRuleForSameField(string methodName)
+        {
+            var startTime = DateTime.Now;
+
+            List<string[]> dvFields = new List<string[]>();
+
+            var ruleDataViewList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType == KineticContentType.Rules
+                    && !n.Shared
+                    && n.Name == "id"
+                    && !string.IsNullOrEmpty(n.PatchedValue)
+                    )
+                .ToArray();
+
+
+
+            var report = ruleDataViewList
+                .Select(n => new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = n.FullFileName,
+                    Message =
+                        $"'providerModel' should not be used along with 'clientFilter'",
+                    FileType = n.FileType.ToString(),
+                    LineId = n.LineId.ToString(),
+                    JsonPath = n.JsonPath,
+                    LineNumber = n.SourceLineNumber.ToString(),
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Error.ToString(),
+                    Source = methodName
+                })
+                .ToArray();
+
+            Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
+
+            return report;
+        }
+
         // is it really incorrect?
         private static IEnumerable<ReportItem> IncorrectLayoutIds(string methodName)
         {
@@ -4042,8 +4219,5 @@ namespace KineticValidator
         }
 
         #endregion
-
-        // misprints in property/dataview/string/id names (try finding lower-case property in schema or project scope)
-        // searches must use only one dataview
     }
 }

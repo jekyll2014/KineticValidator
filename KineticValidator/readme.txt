@@ -8,47 +8,50 @@ Validations implemented:
 	5) Redundant files - .jsonc files not imported in any of the project files.
 	6) National characters - non-ASCII chars in the JSON properties names/values (not touching comments). it's a possible problem for Russian programmers as they have some national characters very similar to English ones so it's possible to have incorrect words absolutely indistinguishable on sight. Also there are some spaces replaced with "&nbsp" char.
 	7) Duplicate JSON property names - JSON properties with similar names within one JSON object. Could not be detected by normal parser AFAIK.
-	8) Empty patch names - not sure this can happen but it's just an idea
-	9) Redundant patches - %patch% not used anywhere in the code
-	10) Non existing patches - a call to undefined %patch%
-	11) Overriding patches - ignores shared patches override
+	8) Empty patch names - not sure this can happen but it's just an idea.
+	9) Redundant patches - %patch% not used anywhere in the code.
+	10) Non existing patches - a call to undefined %patch%.
+	11) Overriding patches - ignores shared patches override.
 	12) Possible patches - property values similar to any of the defined patches. Can be an option to use %patch% instead of hard-coded value.
-	13) Hard-coded message strings - could be a good idea to move them to resource file strings.jsonc
+	13) Hard-coded message strings - could be a good idea to move them to resource file strings.jsonc .
 	14) Possible strings - property values similar to any of the defined string resources. Can be an option to use "{{strings.*}}" instead of hard-coded value.
 	15) Apply patches - replace all %patch% usages with values to improve further validations. Turning this off results to a worse error detection in general case.
-	16) Empty string names - not sure this can happen but it's just an idea
-	17) Empty string values - not sure this can happen but it's just an idea
-	18) Redundant strings - string resources not used anywhere in the project
-	19) Non existing strings - a call to string resource not defined in strings.jsonc
+	16) Empty string names - not sure this can happen but it's just an idea.
+	17) Empty string values - not sure this can happen but it's just an idea.
+	18) Redundant strings - string resources not used anywhere in the project.
+	19) Non existing strings - a call to string resource not defined in strings.jsonc .
 	20) Overriding strings - why would one do it?
-	21) Empty event names - not sure this can happen but it's just an idea
+	21) Empty event names - not sure this can happen but it's just an idea.
 	22) Empty events - events having no any "type" action inside.
 	23) Overriding events - events overriding each other inside the project files (copy-paste?) or events overriding imported events in case imported one is not empty (have any "type" action inside).
-	24) Redundant events - events not used anywhere in the project
-	25) Non existing events - a call to not defined event
-	26) Empty dataView names - not sure this can happen but it's just an idea
-	27) Redundant dataViews - dataViews not used anywhere in the project
-	28) Non existing dataViews - a call to string resource not defined in dataviews.jsonc
+	24) Redundant events - events not used anywhere in the project.
+	25) Non existing events - a call to not defined event.
+	26) Empty dataView names - not sure this can happen but it's just an idea.
+	27) Redundant dataViews - dataViews not used anywhere in the project.
+	28) Non existing dataViews - a call to string resource not defined in dataviews.jsonc .
 	29) Overriding dataViews - there are only a few reasons to do it. For example - attach a menu tools.
-	30) Non existing dataTables - a call to dataTables not defined in strings.jsonc
-	31) Empty rule names - not sure this can happen but it's just an idea
-	32) Overriding rules - why would one do it?
-	33) Empty tool names - not sure this can happen but it's just an idea
-	34) Overriding tools - why would one do it?
-	35) Missing forms - call to forms not having certain folder + events.jsonc file (not implemented in Kinetic). This could be a WinForm name so not an issue.
-	36) Missing searches - call to search forms not having certain \Shared\search\like\searchForm\search.jsonc file (not implemented in Kinetic).
-	37) JavaScript code - any property value containing "#_" pattern
-	38) JS #_trans.dataView('DataView').count_# - old-style version of a newer "%DataView.count%" macro
-	39) Incorrect dataview-condition - "dataview-condition" method must have different values for "dataview" and "result" properties otherwise dataview data could be corrupted.
-	40) Incorrect REST calls - to detect inconsistent REST calls. Available services/methods/parameters are taken from Server\Assemblies folder *.Contract*.dll files. Need to have some dependent DLL's in program or Assemblies folder to get parameters list for the methods (service and methods works well without). See 'Tech notes'.
-	41) Incorrect field names - checking every {dataview.field} pattern for defined dataView and existing field as per server dataset information. Field check is only performed for server-related dataTables/views.
-	42) Missing layout id's - any layouts not having the "model.id" or "model.id" different from control "id"
-	43) Incorrect event expressions - <condition> event expression validation (C# style)
-	44) Incorrect rule conditions - <dataview-condition> event expression and rule condition validation (SQL style)
-	45) !!!Experimental feature!!! Incorrect layout id's - any layouts having "model.id" different from control "id"
-	46) 'providerModel' mixed with 'clientFilter' - 
-	47) !!!Experimental feature!!! Incorrect tab links - to detect inexistent tab id's (broken by AppStudio). Not very reliable - false alarms on slide-outs.
-	48) !!!Experimental feature!!! Duplicate GUID's - to find GUID duplicates within project scope.
+	30) Non existing dataTables - a call to dataTables not defined in strings.jsonc .
+	31) Empty rule names - not sure this can happen but it's just an idea.
+	32) Empty rules - rules having no any "action" inside.
+	33) No condition rules - rules having no "condition" inside.
+	34) Overriding rules - why would one do it?
+	35) Empty tool names - not sure this can happen but it's just an idea.
+	36) Overriding tools - why would one do it?
+	37) Missing forms - call to forms not having certain folder + events.jsonc file (not implemented in Kinetic). This could be a WinForm name so not an issue.
+	38) Missing searches - call to search forms not having certain \Shared\search\like\searchForm\search.jsonc file (not implemented in Kinetic).
+	39) JavaScript code - any property value containing "#_" pattern.
+	40) JS #_trans.dataView('DataView').count_# - old-style version of a newer "%DataView.count%" macro.
+	41) Incorrect dataview-condition - "dataview-condition" method must have different values for "dataview" and "result" properties otherwise dataview data could be corrupted.
+	42) Incorrect REST calls - to detect inconsistent REST calls. Available services/methods/parameters are taken from Server\Assemblies folder *.Contract*.dll files. Need to have some dependent DLL's in program or Assemblies folder to get parameters list for the methods (service and methods works well without). See 'Tech notes'.
+	43) Incorrect field names - checking every {dataview.field} pattern for defined dataView and existing field as per server dataset information. Field check is only performed for server-related dataTables/views.
+	44) Missing layout id's - any layouts not having the "model.id" or "model.id" different from control "id".
+	45) Incorrect event expressions - <condition> event expression validation (C# style).
+	46) Incorrect rule conditions - <dataview-condition> event expression and rule condition validation (SQL style).
+	47) Property name contains \'.\' char.
+	49) 'providerModel' mixed with 'clientFilter' - Grid doesn't work correct having both 'providerModel' and 'clientFilter' features defined.
+	48) !!!Experimental feature!!! Incorrect layout id's - any layouts having "model.id" different from control "id".
+	50) !!!Experimental feature!!! Incorrect tab links - to detect inexistent tab id's (broken by AppStudio). Not very reliable - false alarms on slide-outs.
+	51) !!!Experimental feature!!! Duplicate GUID's - to find GUID duplicates within project scope.
 
 	It is possible to select root projects folder to run mass-validation. Note that it tries to find a project in only one sub-folder level.
 	Program also tries to load report from \program_folder\project_folder\ on project folder selection. This is a previously generated folder so the report can be outdated.

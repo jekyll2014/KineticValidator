@@ -1693,7 +1693,7 @@ namespace KineticValidator
             {
                 if (!textEditor.HighlightPosition(startPosition, endPosition + 1))
                 {
-                    textEditor.HighlightLines(lineNumber, 0);
+                    textEditor.HighlightLines(lineNumber - 1, 1);
                 }
             }
         }
