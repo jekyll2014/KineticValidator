@@ -3791,11 +3791,38 @@ namespace KineticValidator
                 n.ItemType == JsonItemType.Property
                 && !n.Shared))
             {
-                string[] fields;
+                List<string> fields = new List<string>();
                 if (item.Name == "epBinding")
-                    fields = new[] { item.Value };
+                {
+                    var tokens = item.PatchedValue.Split(',');
+                    foreach (var t in tokens)
+                    {
+                        if (string.IsNullOrEmpty(t))
+                            fields.Add(t);
+                    }
+                }
+                else if (item.FileType == KineticContentType.Layout
+                    && item.Name == "field"
+                    && item.Parent == "columns"
+                    && !string.IsNullOrEmpty(item.PatchedValue))
+                {
+                    var dv = _jsonPropertiesCollection.FirstOrDefault(n =>
+                    n.FileType == KineticContentType.Layout
+                    && n.FullFileName == item.FullFileName
+                    && n.JsonPath == TrimPathEnd(item.ParentPath, 1) + ".epBinding")?.PatchedValue;
+                    if (!string.IsNullOrEmpty(dv))
+                        fields.Add(dv + "." + item.PatchedValue);
+                }
                 else
-                    fields = GetTableField(item.PatchedValue).Where(n => n.IndexOfAny(new[] { '%', '{', '}' }) <= 0).ToArray();
+                {
+                    fields.AddRange(GetTableField(item.PatchedValue).Where(n => n.IndexOfAny(new[] { '%', '{', '}' }) <= 0));
+                }
+
+                if (fields.Count <= 0)
+                    continue;
+
+                if (string.IsNullOrEmpty(fields[0]))
+                    continue;
 
                 foreach (var field in fields)
                 {
@@ -3817,7 +3844,7 @@ namespace KineticValidator
                         };
                         report.Add(newReport);
                     }
-                    else if (!localDataViews.Contains(tokens[0]) && !_formDataViews.Any(n =>
+                    else if (tokens.Length > 1 && !localDataViews.Contains(tokens[0]) && !_formDataViews.Any(n =>
                         n.DataViewName == tokens[0] && n.Fields.Contains(tokens[1])))
                     {
                         var newReport = new ReportItem
