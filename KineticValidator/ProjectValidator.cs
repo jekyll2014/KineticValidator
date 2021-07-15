@@ -3791,7 +3791,12 @@ namespace KineticValidator
                 n.ItemType == JsonItemType.Property
                 && !n.Shared))
             {
-                var fields = GetTableField(item.PatchedValue).Where(n => n.IndexOfAny(new[] { '%', '{', '}' }) <= 0);
+                string[] fields;
+                if (item.Name == "epBinding")
+                    fields = new[] { item.Value };
+                else
+                    fields = GetTableField(item.PatchedValue).Where(n => n.IndexOfAny(new[] { '%', '{', '}' }) <= 0).ToArray();
+
                 foreach (var field in fields)
                 {
                     var tokens = field.Split('.');
