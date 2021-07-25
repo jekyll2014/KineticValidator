@@ -8,7 +8,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Runtime.Remoting.Messaging;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -112,10 +111,10 @@ namespace KineticValidator
             new ConcurrentDictionary<string, List<ParsedProperty>>();
 
         //global cache
-        private static readonly ConcurrentDictionary<string, string> SchemaList =
+        private static ConcurrentDictionary<string, string> SchemaList =
             new ConcurrentDictionary<string, string>(); // schema URL / schema text
 
-        private static readonly ConcurrentDictionary<string, Dictionary<string, string[]>> KnownServices =
+        private static ConcurrentDictionary<string, Dictionary<string, string[]>> KnownServices =
             new ConcurrentDictionary<string, Dictionary<string, string[]>>(); // svcName / [methodName, parameters]
 
         private class KineticDataView
@@ -129,6 +128,7 @@ namespace KineticValidator
             public string ServerDataTableName = "";
 
             public bool IsLocal = false;
+            public bool IsDataViewCondition = false;
 
             public List<string> Fields = new List<string>();
             public List<string> AdditionalFields = new List<string>();
@@ -147,7 +147,7 @@ namespace KineticValidator
         private static List<KineticDataView>
             _formDataViews = new List<KineticDataView>();
 
-        private static readonly ConcurrentDictionary<string, Dictionary<string, Dictionary<string, string[]>>>
+        private static ConcurrentDictionary<string, Dictionary<string, Dictionary<string, string[]>>>
             KnownDataSets =
                 new ConcurrentDictionary<string, Dictionary<string, Dictionary<string, string[]>>>(); // svcName / [dataSet, [datatables, fields]]
 
@@ -194,8 +194,9 @@ namespace KineticValidator
                 _formDataViews = new List<KineticDataView>();
             }
             //SchemaList = new Dictionary<string, string>();
-            //KnownServices = new Dictionary<string, Dictionary<string, List<string>>>();
+            //KnownServices = new ConcurrentDictionary<string, Dictionary<string, string[]>>();
             //KnownDataSets = new ConcurrentDictionary<string, Dictionary<string, Dictionary<string, string[]>>>();
+            _formDataViews = new List<KineticDataView>();
 
             if (_patchAllFields)
                 PatchAllFields();
@@ -224,7 +225,8 @@ namespace KineticValidator
             var tokens = field.Split(improperChars);
             foreach (var token in tokens)
             {
-                if (string.IsNullOrEmpty(token) || !token.Contains('.')) continue;
+                if (string.IsNullOrEmpty(token) || !token.Contains('.'))
+                    continue;
 
                 var startCharNum = CountChars(token, startChar);
                 var endCharNum = CountChars(token, endChar);
@@ -275,8 +277,10 @@ namespace KineticValidator
                                 var endPos = s[i].Pos - s[i - 1].Pos - 1;
                                 if (noBracketTrim)
                                 {
-                                    if (startPos > 0 && token[startPos - 1] == '{') startPos--;
-                                    if (endPos + 2 < token.Length && token[endPos + 2] == '}') endPos += 2;
+                                    if (startPos > 0 && token[startPos - 1] == '{')
+                                        startPos--;
+                                    if (endPos + 2 < token.Length && token[endPos + 2] == '}')
+                                        endPos += 2;
                                 }
 
                                 str = token.Substring(startPos, endPos);
@@ -405,14 +409,17 @@ namespace KineticValidator
                 tokens[i] = tokens[i].Trim(new[] { '[', ']' });
             }
 
-            if (tokens.Length != 2) return false;
+            if (tokens.Length != 2)
+                return false;
 
             var dv = _formDataViews.FirstOrDefault(n =>
                 n.DataViewName == tokens[0]);
 
-            if (dv == null) return false;
+            if (dv == null)
+                return false;
 
-            if (_systemDataViews.Contains(tokens[0], StringComparer.InvariantCultureIgnoreCase)) return true;
+            if (_systemDataViews.Contains(tokens[0], StringComparer.InvariantCultureIgnoreCase))
+                return true;
 
             var result = true;
 
@@ -1047,7 +1054,8 @@ namespace KineticValidator
 
             lock (LockDataViewCollectionGetter)
             {
-                if (_formDataViews.Count > 0) return report;
+                if (_formDataViews.Count > 0)
+                    return report;
 
                 var svcList = _jsonPropertiesCollection
                     .Where(n =>
@@ -1073,6 +1081,10 @@ namespace KineticValidator
                         || n.FileType == KineticContentType.Events
                         && n.Parent == "param"
                         && n.Name == "result"
+                        && _jsonPropertiesCollection.Any(m =>
+                        m.FullFileName == n.FullFileName
+                        && m.JsonPath == TrimPathEnd(n.ParentPath, 1) + ".type"
+                        && m.PatchedValue == "dataview-condition")
                         && !string.IsNullOrEmpty(n.PatchedValue))
                     .GroupBy(n => n.PatchedValue)
                     .Select(n => n.Last())
@@ -1095,9 +1107,11 @@ namespace KineticValidator
                     if (kineticDataView.PatchedValue.IndexOfAny(new[] { '{', '}', '%' }) >= 0) // non-constant dataView name
                         continue;
 
+                    var isDvCondition = false;
                     var originalDataViewName = kineticDataView;
                     if (kineticDataView.Name == "result") // temp. view for <dataview-condition>
                     {
+                        isDvCondition = true;
                         // find original dataView and use it's properties
                         var originalName = _jsonPropertiesCollection
                             .FirstOrDefault(n =>
@@ -1110,7 +1124,7 @@ namespace KineticValidator
                                n.ItemType == JsonItemType.Property
                                && n.FileType == KineticContentType.DataViews
                                && n.Parent == "dataviews" && n.Name == "id"
-                               && n.PatchedValue == originalName);
+                               && n.PatchedValue == originalName) ?? kineticDataView;
                     }
 
                     var kineticTableName = _jsonPropertiesCollection
@@ -1169,7 +1183,8 @@ namespace KineticValidator
                             ServerDataTableName = srvTableName,
                             LocalDataTableName = kineticTableName,
                             DataViewName = kineticDataView.PatchedValue,
-                            AdditionalFields = additionalColumnsList
+                            AdditionalFields = additionalColumnsList,
+                            IsDataViewCondition = isDvCondition
                         };
 
                         var serverDataSet = KnownDataSets?
@@ -1194,72 +1209,83 @@ namespace KineticValidator
                             };
                             report.Add(newReport);
                         }
-                        //else
-                        //{
-                            var serverTable = serverDataSet?.Value?.FirstOrDefault(n => n.Key == srvTableName);
 
-                            if (serverTable?.Key == null)
-                            {
-                                var newReport = new ReportItem
-                                {
-                                    ProjectName = _projectName,
-                                    FullFileName = originalDataViewName.FullFileName,
-                                    Message =
-                                        $"ServerDataTable \"{srvTableName}\" targeted in \"{originalDataViewName.PatchedValue}\" dataView is not found",
-                                    FileType = originalDataViewName.FileType.ToString(),
-                                    LineId = originalDataViewName.LineId.ToString(),
-                                    JsonPath = originalDataViewName.JsonPath,
-                                    LineNumber = originalDataViewName.SourceLineNumber.ToString(),
-                                    ValidationType = ValidationTypeEnum.Logic.ToString(),
-                                    Severity = ImportanceEnum.Error.ToString(),
-                                    Source = methodName
-                                };
+                        var serverTable = serverDataSet?.Value?.FirstOrDefault(n => n.Key == srvTableName);
 
-                                report.Add(newReport);
-                            }
-                            else
+                        //trying to get dataTable by name in any of the dataSets available
+                        if (serverDataSet?.Key == null)
+                        {
+                            foreach (var ds in KnownDataSets)
                             {
-                                if (serverTable.Value.Value != null)
-                                    newView.Fields.AddRange(serverTable?.Value);
+                                serverTable = ds.Value.Select(n => n.Value?.FirstOrDefault(m => m.Key == srvDataSetName))?
+                                .FirstOrDefault(n => n?.Key == srvDataSetName);
+                                if (serverTable != null)
+                                    break;
                             }
+                        }
 
-                            var oldDv = _formDataViews.LastOrDefault(n => n.DataViewName == newView.DataViewName);
-                            if (oldDv == null)
+                        if (serverTable?.Key == null)
+                        {
+                            var newReport = new ReportItem
                             {
-                                _formDataViews.Add(newView);
-                            }
-                            else if (oldDv.IsLocal)
-                            {
-                                oldDv.DataViewName = newView.DataViewName;
-                                oldDv.SvcName = newView.SvcName;
-                                oldDv.ServerDataSetName = newView.ServerDataSetName;
-                                oldDv.LocalDataSetName = newView.LocalDataSetName;
-                                oldDv.ServerDataTableName = newView.ServerDataTableName;
-                                oldDv.LocalDataTableName = newView.LocalDataTableName;
-                                oldDv.Fields = newView.Fields;
-                                oldDv.AdditionalFields = newView.AdditionalFields;
-                                oldDv.IsLocal = newView.IsLocal;
-                            }
-                            else
-                            {
-                                var newReport = new ReportItem
-                                {
-                                    ProjectName = _projectName,
-                                    FullFileName = kineticDataView.FullFileName,
-                                    Message =
-                                        $"Dataview \"{newView.DataViewName}\" is overriding \"{oldDv.DataViewName}\"",
-                                    FileType = kineticDataView.FileType.ToString(),
-                                    LineId = kineticDataView.LineId.ToString(),
-                                    JsonPath = kineticDataView.JsonPath,
-                                    LineNumber = kineticDataView.SourceLineNumber.ToString(),
-                                    ValidationType = ValidationTypeEnum.Logic.ToString(),
-                                    Severity = ImportanceEnum.Error.ToString(),
-                                    Source = methodName
-                                };
+                                ProjectName = _projectName,
+                                FullFileName = originalDataViewName.FullFileName,
+                                Message =
+                                    $"ServerDataTable \"{srvTableName}\" targeted in \"{originalDataViewName.PatchedValue}\" dataView is not found",
+                                FileType = originalDataViewName.FileType.ToString(),
+                                LineId = originalDataViewName.LineId.ToString(),
+                                JsonPath = originalDataViewName.JsonPath,
+                                LineNumber = originalDataViewName.SourceLineNumber.ToString(),
+                                ValidationType = ValidationTypeEnum.Logic.ToString(),
+                                Severity = ImportanceEnum.Error.ToString(),
+                                Source = methodName
+                            };
 
-                                report.Add(newReport);
-                            }
-                        //}
+                            report.Add(newReport);
+                        }
+                        else
+                        {
+                            if (serverTable.Value.Value != null)
+                                newView.Fields.AddRange(serverTable?.Value);
+                        }
+
+                        var oldDv = _formDataViews.LastOrDefault(n => n.DataViewName == newView.DataViewName);
+                        if (oldDv == null)
+                        {
+                            _formDataViews.Add(newView);
+                        }
+                        else if (oldDv.IsLocal)
+                        {
+                            oldDv.DataViewName = newView.DataViewName;
+                            oldDv.SvcName = newView.SvcName;
+                            oldDv.ServerDataSetName = newView.ServerDataSetName;
+                            oldDv.LocalDataSetName = newView.LocalDataSetName;
+                            oldDv.ServerDataTableName = newView.ServerDataTableName;
+                            oldDv.LocalDataTableName = newView.LocalDataTableName;
+                            oldDv.Fields = newView.Fields;
+                            oldDv.AdditionalFields = newView.AdditionalFields;
+                            oldDv.IsLocal = newView.IsLocal;
+                            oldDv.IsDataViewCondition = newView.IsDataViewCondition;
+                        }
+                        else
+                        {
+                            var newReport = new ReportItem
+                            {
+                                ProjectName = _projectName,
+                                FullFileName = kineticDataView.FullFileName,
+                                Message =
+                                    $"Dataview \"{newView.DataViewName}\" is overriding \"{oldDv.DataViewName}\"",
+                                FileType = kineticDataView.FileType.ToString(),
+                                LineId = kineticDataView.LineId.ToString(),
+                                JsonPath = kineticDataView.JsonPath,
+                                LineNumber = kineticDataView.SourceLineNumber.ToString(),
+                                ValidationType = ValidationTypeEnum.Logic.ToString(),
+                                Severity = ImportanceEnum.Error.ToString(),
+                                Source = methodName
+                            };
+
+                            report.Add(newReport);
+                        }
                     }
                     // local dataView with no server source
                     else
@@ -1272,7 +1298,8 @@ namespace KineticValidator
                             LocalDataTableName = kineticTableName,
                             DataViewName = kineticDataView.PatchedValue,
                             AdditionalFields = additionalColumnsList,
-                            IsLocal = true
+                            IsLocal = true,
+                            IsDataViewCondition = isDvCondition
                         };
 
                         var oldDv = _formDataViews.LastOrDefault(n => n.DataViewName == newView.DataViewName);
@@ -1291,6 +1318,7 @@ namespace KineticValidator
                             oldDv.Fields = newView.Fields;
                             oldDv.AdditionalFields = newView.AdditionalFields;
                             oldDv.IsLocal = newView.IsLocal;
+                            oldDv.IsDataViewCondition = newView.IsDataViewCondition;
                         }
                         else
                         {
@@ -1375,13 +1403,23 @@ namespace KineticValidator
                             && m.JsonPath == TrimPathEnd(n.ParentPath, 2) + ".sourceTypeId"
                             && m.PatchedValue == "metafx-panel-card-grid")
                         )
-                    .Select(n => n.PatchedValue).ToArray();
+                    .ToArray();
 
                 foreach (var dvName in selectableGrids)
                 {
-                    var dv = _formDataViews.FirstOrDefault(n => n.DataViewName == dvName);
+                    var dv = _formDataViews.FirstOrDefault(n => n.DataViewName == dvName.PatchedValue);
 
-                    dv?.AdditionalFields.Add("Selected");
+                    var selectedField = _jsonPropertiesCollection
+                    .FirstOrDefault(n =>
+                        n.FullFileName == dvName.FullFileName
+                        && n.ParentPath.StartsWith(dvName.ParentPath + ".columns")
+                        && n.Name == "field"
+                        && _jsonPropertiesCollection.Any(m =>
+                            m.FullFileName == n.FullFileName
+                            && m.JsonPath == n.ParentPath + ".selector")
+                    )?.PatchedValue ?? "Selected";
+
+                    dv?.AdditionalFields.Add(selectedField);
                 }
 
                 var dataViewsGrouped = fieldsList.GroupBy(n => n[0]);
@@ -1390,7 +1428,8 @@ namespace KineticValidator
                 {
                     var dv = _formDataViews.FirstOrDefault(n => n.DataViewName == dataView.Key);
 
-                    if (dv == null) continue;
+                    if (dv == null)
+                        continue;
 
                     foreach (var field in dataView)
                     {
@@ -1399,7 +1438,8 @@ namespace KineticValidator
 
                     dv.AdditionalFields = dv.AdditionalFields.Distinct().ToList();
 
-                    if (dv.IsLocal) continue;
+                    if (dv.IsLocal)
+                        continue;
 
                     //remove any server fields
                     for (var i = 0; i < dv.AdditionalFields.Count; i++)
@@ -3249,7 +3289,8 @@ namespace KineticValidator
                 for (var i = 1; i < viewDup.Count(); i++)
                 {
                     var severity = ImportanceEnum.Error;
-                    if (viewDup[i - 1].Shared) severity = ImportanceEnum.Warning;
+                    if (viewDup[i - 1].Shared)
+                        severity = ImportanceEnum.Warning;
 
                     var reportItem = new ReportItem
                     {
@@ -4413,7 +4454,7 @@ namespace KineticValidator
                 {
                     ProjectName = _projectName,
                     FullFileName = n.expression.FullFileName,
-                    Message = $"Expression incorrect [{n.result}]: \"{n.expression.PatchedValue}\"",
+                    Message = $"Incorrect expression [{n.result}]: \"{n.expression.PatchedValue}\"",
                     FileType = n.expression.FileType.ToString(),
                     LineId = n.expression.LineId.ToString(),
                     JsonPath = n.expression.JsonPath,
@@ -4456,7 +4497,7 @@ namespace KineticValidator
                 {
                     ProjectName = _projectName,
                     FullFileName = n.condition.FullFileName,
-                    Message = $"Condition incorrect [{n.result}]: \"{n.condition.PatchedValue}\"",
+                    Message = $"Incorrect condition [{n.result}]: \"{n.condition.PatchedValue}\"",
                     FileType = n.condition.FileType.ToString(),
                     LineId = n.condition.LineId.ToString(),
                     JsonPath = n.condition.JsonPath,
