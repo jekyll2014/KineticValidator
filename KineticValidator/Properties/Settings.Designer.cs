@@ -85,9 +85,9 @@ namespace KineticValidator.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("Constant;CallContextBpmData;CallContextClientData;actionResult;searchResult;sysLi" +
-            "censedModules;sysTools;sysGlobalVariable;sysPages;sysTabs;sysVariable;sysTreeNod" +
-            "e;sysDragRows;sysPublishedData;strings;sysGanttTasks;")]
+        [global::System.Configuration.DefaultSettingValueAttribute("context;Constant;CallContextBpmData;CallContextClientData;actionResult;searchResu" +
+            "lt;sysLicensedModules;sysTools;sysGlobalVariable;sysPages;sysTabs;sysVariable;sy" +
+            "sTreeNode;sysDragRows;sysPublishedData;strings;sysGanttTasks;")]
         public string SystemDataViews {
             get {
                 return ((string)(this["SystemDataViews"]));

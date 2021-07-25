@@ -18,7 +18,7 @@
       <Value Profile="(Default)">%value%; %row%; %oldValue%; %current%; %previous%; %column%; %currentDataView%; %previousDataView%; %coreCurrentDataView%; %corePreviousDataView%; %nodeEntityType%; %nodeSysRowID%; %nodeIsFolder%; %dragEntityType%; %startDateTime%; %endDateTime%; %isAllDayEvent%; %viewName%</Value>
     </Setting>
     <Setting Name="SystemDataViews" Type="System.String" Scope="User">
-      <Value Profile="(Default)">Constant;CallContextBpmData;CallContextClientData;actionResult;searchResult;sysLicensedModules;sysTools;sysGlobalVariable;sysPages;sysTabs;sysVariable;sysTreeNode;sysDragRows;sysPublishedData;strings;sysGanttTasks;</Value>
+      <Value Profile="(Default)">context;Constant;CallContextBpmData;CallContextClientData;actionResult;searchResult;sysLicensedModules;sysTools;sysGlobalVariable;sysPages;sysTabs;sysVariable;sysTreeNode;sysDragRows;sysPublishedData;strings;sysGanttTasks;</Value>
     </Setting>
     <Setting Name="InitialProjectFiles" Type="System.String" Scope="User">
       <Value Profile="(Default)">dataviews.jsonc;events.jsonc;layout.jsonc;rules.jsonc;tools.jsonc;strings.jsonc;patch.jsonc</Value>

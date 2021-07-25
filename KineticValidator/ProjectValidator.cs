@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Runtime.Remoting.Messaging;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -61,7 +62,7 @@ namespace KineticValidator
                 {"Redundant files", RedundantFiles},
                 {"National characters", ValidateFileChars},
                 {"Duplicate JSON property names", DuplicateIds},
-                {"Empty patch names", EmptyPatchNames},
+                {"Empty id's", EmptyIdNames},
                 {"Redundant patches", RedundantPatches},
                 {"Non existing patches", CallNonExistingPatches},
                 {"Overriding patches", OverridingPatches},
@@ -73,29 +74,26 @@ namespace KineticValidator
                 {"Redundant strings", RedundantStrings},
                 {"Non existing strings", CallNonExistingStrings},
                 {"Overriding strings", OverridingStrings},
-                {"Empty event names", EmptyEventNames},
                 {"Empty events", EmptyEvents},
                 {"Overriding events", OverridingEvents},
                 {"Redundant events", RedundantEvents},
                 {"Non existing events", CallNonExistingEvents},
-                {"Empty dataView names", EmptyDataViewNames},
                 {"Redundant dataViews", RedundantDataViews},
                 {"Non existing dataViews", CallNonExistingDataViews},
                 {"Overriding dataViews", OverridingDataViews},
                 {"Non existing dataTables", CallNonExistingDataTables},
-                {"Empty rule names", EmptyRuleNames},
                 {"Empty rules", EmptyRules},
                 {"No condition rules", NoConditionRules},
                 {"Overriding rules", OverridingRules},
-                {"Empty tool names", EmptyToolNames},
                 {"Overriding tools", OverridingTools},
                 {"Missing forms", MissingForms},
                 {"Missing searches", MissingSearches},
                 {"JavaScript code", JsCode},
                 {"JS #_trans.dataView('DataView').count_#", JsDataViewCount},
-                {"Incorrect dataview-condition's", IncorrectDvConditionViewName},
+                {"Incorrect dataview-condition", IncorrectDvConditionViewName},
                 {"Incorrect REST calls", IncorrectRestCalls},
                 {"Incorrect field names", IncorrectFieldUsages},
+                {"Un-enclosed data-field value", UnEnclosedFieldValue},
                 {"Missing layout id's", MissingLayoutIds},
                 {"Incorrect event expressions", IncorrectEventExpression},
                 {"Incorrect rule conditions", IncorrectRuleConditions},
@@ -130,7 +128,9 @@ namespace KineticValidator
             public string LocalDataTableName = "";
             public string ServerDataTableName = "";
 
-            public readonly List<string> Fields = new List<string>();
+            public bool IsLocal = false;
+
+            public List<string> Fields = new List<string>();
             public List<string> AdditionalFields = new List<string>();
             public List<string> AllFields
             {
@@ -211,7 +211,7 @@ namespace KineticValidator
             public int Number;
         }
 
-        private static List<string> GetTableField(string field)
+        private static List<string> GetTableField(string field, bool noBracketTrim = false)
         {
             var valueList = new List<string>();
             if (string.IsNullOrEmpty(field))
@@ -224,6 +224,8 @@ namespace KineticValidator
             var tokens = field.Split(improperChars);
             foreach (var token in tokens)
             {
+                if (string.IsNullOrEmpty(token) || !token.Contains('.')) continue;
+
                 var startCharNum = CountChars(token, startChar);
                 var endCharNum = CountChars(token, endChar);
                 if (startCharNum != 0 && endCharNum != 0 && startCharNum == endCharNum)
@@ -268,12 +270,26 @@ namespace KineticValidator
                             if (s[i - 1].Number + 1 == s[i].Number && s[i - 1].Bracket == startChar &&
                                 s[i].Bracket == endChar)
                             {
-                                var str = token.Substring(s[i - 1].Pos + 1, s[i].Pos - s[i - 1].Pos - 1);
+                                var str = "";
+                                var startPos = s[i - 1].Pos + 1;
+                                var endPos = s[i].Pos - s[i - 1].Pos - 1;
+                                if (noBracketTrim)
+                                {
+                                    if (startPos > 0 && token[startPos - 1] == '{') startPos--;
+                                    if (endPos + 2 < token.Length && token[endPos + 2] == '}') endPos += 2;
+                                }
+
+                                str = token.Substring(startPos, endPos);
+
                                 if (str.Contains('.'))
                                     valueList.Add(str);
                             }
                         }
                     }
+                }
+                else if (noBracketTrim)
+                {
+                    valueList.Add(token);
                 }
             }
 
@@ -359,6 +375,56 @@ namespace KineticValidator
             return originalPath;
         }
 
+        private static string TrimArrayName(string arrayName)
+        {
+            if (arrayName.EndsWith("]"))
+            {
+                var pos = arrayName.LastIndexOf('[');
+                if (pos >= 0)
+                {
+                    arrayName = arrayName.Substring(0, pos);
+                }
+            }
+
+            return arrayName;
+        }
+
+        private static bool DataViewExists(string dataField)
+        {
+            var tokens = dataField.Trim(new[] { '{', '}' }).Split('.');
+
+            return _formDataViews.Any(n =>
+                n.DataViewName == tokens[0]);
+        }
+
+        private static bool DataFieldExists(string dataField)
+        {
+            var tokens = dataField.Trim(new[] { '{', '}', '[', ']' }).Split('.');
+            for (var i = 0; i < tokens.Length; i++)
+            {
+                tokens[i] = tokens[i].Trim(new[] { '[', ']' });
+            }
+
+            if (tokens.Length != 2) return false;
+
+            var dv = _formDataViews.FirstOrDefault(n =>
+                n.DataViewName == tokens[0]);
+
+            if (dv == null) return false;
+
+            if (_systemDataViews.Contains(tokens[0], StringComparer.InvariantCultureIgnoreCase)) return true;
+
+            var result = true;
+
+            result = dv.Fields.Contains(tokens[1]);
+            if (!result)
+            {
+                result = dv.AdditionalFields.Contains(tokens[1]);
+            }
+
+            return result;
+        }
+
         private static bool IsTableField(string field)
         {
             var regex = new Regex(@"^{+\w+[.]+\w+}$");
@@ -371,6 +437,16 @@ namespace KineticValidator
             var regex = new Regex(@"^%+\w+%$");
 
             return regex.Match(field.Trim('\'')).Success;
+        }
+
+        private static bool IsNumeric(string str)
+        {
+            if (string.IsNullOrEmpty(str))
+            {
+                return false;
+            }
+
+            return str.All(c => (c >= '0' && c <= '9') || c == '.' || c == '-');
         }
 
         private static bool HasJsCode(string field)
@@ -387,7 +463,6 @@ namespace KineticValidator
         }
 
         private static readonly object LockSchemaGetter = new object();
-
         private static async Task<List<ReportItem>> ValidateFileSchema(string projectName,
             string fullFileName,
             string schemaUrl = "")
@@ -767,8 +842,9 @@ namespace KineticValidator
             if (_patchValues == null || _patchValues.Count == 0)
                 _patchValues = CollectPatchValues();
 
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var valuesList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -787,8 +863,9 @@ namespace KineticValidator
                     }
                 }
             }
-
+#if DEBUG
             Console.WriteLine($"PatchAllFields execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
+#endif
         }
 
         private struct RestMethodInfo
@@ -963,6 +1040,382 @@ namespace KineticValidator
             return result;
         }
 
+        private static readonly object LockDataViewCollectionGetter = new object();
+        private static IEnumerable<ReportItem> CollectDataViewInfo(string methodName)
+        {
+            var report = new List<ReportItem>();
+
+            lock (LockDataViewCollectionGetter)
+            {
+                if (_formDataViews.Count > 0) return report;
+
+                var svcList = _jsonPropertiesCollection
+                    .Where(n =>
+                        n.ItemType == JsonItemType.Property
+                        && (n.FileType == KineticContentType.Events
+                            || n.FileType == KineticContentType.Patch
+                            || n.FileType == KineticContentType.Layout)
+                        && n.Name == "svc"
+                        && !string.IsNullOrEmpty(n.PatchedValue))
+                    .Select(n => n.PatchedValue)
+                    .Distinct()
+                    .ToArray();
+
+                foreach (var svc in svcList)
+                    LoadService(svc, _serverAssembliesPath);
+
+                // collect dataview definitions
+                var dataViewList = _jsonPropertiesCollection
+                    .Where(n =>
+                        n.ItemType == JsonItemType.Property
+                        && n.FileType == KineticContentType.DataViews
+                        && n.Parent == "dataviews" && n.Name == "id"
+                        || n.FileType == KineticContentType.Events
+                        && n.Parent == "param"
+                        && n.Name == "result"
+                        && !string.IsNullOrEmpty(n.PatchedValue))
+                    .GroupBy(n => n.PatchedValue)
+                    .Select(n => n.Last())
+                    .ToArray();
+
+                // add all system dataViews
+                foreach (var item in _systemDataViews)
+                {
+                    var newView = new KineticDataView
+                    {
+                        DataViewName = item,
+                        IsLocal = true
+                    };
+                    _formDataViews.Add(newView);
+                }
+
+                // collect complete info (dataSet/dataTable/fields/additional fields) for every dataView
+                foreach (var kineticDataView in dataViewList)
+                {
+                    if (kineticDataView.PatchedValue.IndexOfAny(new[] { '{', '}', '%' }) >= 0) // non-constant dataView name
+                        continue;
+
+                    var originalDataViewName = kineticDataView;
+                    if (kineticDataView.Name == "result") // temp. view for <dataview-condition>
+                    {
+                        // find original dataView and use it's properties
+                        var originalName = _jsonPropertiesCollection
+                            .FirstOrDefault(n =>
+                                n.ItemType == JsonItemType.Property
+                                && n.FullFileName == kineticDataView.FullFileName
+                                && n.JsonPath == TrimPathEnd(kineticDataView.JsonPath, 1) + ".dataview").PatchedValue;
+
+                        originalDataViewName = _jsonPropertiesCollection
+                           .FirstOrDefault(n =>
+                               n.ItemType == JsonItemType.Property
+                               && n.FileType == KineticContentType.DataViews
+                               && n.Parent == "dataviews" && n.Name == "id"
+                               && n.PatchedValue == originalName);
+                    }
+
+                    var kineticTableName = _jsonPropertiesCollection
+                        .FirstOrDefault(n =>
+                            n.ItemType == JsonItemType.Property
+                            && n.FullFileName == originalDataViewName.FullFileName
+                            && n.JsonPath == originalDataViewName.JsonPath.Replace(".id", ".table")
+                            && !string.IsNullOrEmpty(n.PatchedValue))?
+                        .PatchedValue;
+
+                    var kineticDataSetName = _jsonPropertiesCollection
+                        .FirstOrDefault(n =>
+                            n.ItemType == JsonItemType.Property
+                            && n.FullFileName == originalDataViewName.FullFileName
+                            && n.JsonPath == originalDataViewName.JsonPath.Replace(".id", ".datasetId")
+                            && !string.IsNullOrEmpty(n.PatchedValue))?
+                        .PatchedValue;
+
+                    var srvDataSetName = _jsonPropertiesCollection
+                        .FirstOrDefault(n =>
+                            n.ItemType == JsonItemType.Property
+                            && n.FullFileName == originalDataViewName.FullFileName
+                            && n.JsonPath == originalDataViewName.JsonPath.Replace(".id", ".serverDataset")
+                            && !string.IsNullOrEmpty(n.PatchedValue))?
+                        .PatchedValue;
+
+                    var srvTableName = _jsonPropertiesCollection
+                        .FirstOrDefault(n =>
+                            n.ItemType == JsonItemType.Property
+                            && n.FullFileName == originalDataViewName.FullFileName
+                            && n.JsonPath == originalDataViewName.JsonPath.Replace(".id", ".serverTable")
+                            && !string.IsNullOrEmpty(n.PatchedValue))?
+                        .PatchedValue;
+
+                    var additionalColumnsList = _jsonPropertiesCollection
+                        .Where(n =>
+                            n.ItemType == JsonItemType.Property
+                            && n.FullFileName == originalDataViewName.FullFileName
+                            && n.JsonPath == originalDataViewName.JsonPath.Replace(".id", ".additionalColumns")
+                            && !string.IsNullOrEmpty(n.PatchedValue))?
+                        .Select(n => n.PatchedValue)?
+                        .ToList();
+
+                    // real dataView with server source
+                    if (!string.IsNullOrEmpty(kineticDataSetName)
+                        && !string.IsNullOrEmpty(srvDataSetName)
+                        && !string.IsNullOrEmpty(srvTableName))
+                    {
+                        var svcName = KnownDataSets.FirstOrDefault(n => n.Value.ContainsKey(srvDataSetName)).Key;
+
+                        var newView = new KineticDataView
+                        {
+                            SvcName = svcName,
+                            ServerDataSetName = srvDataSetName,
+                            LocalDataSetName = kineticDataSetName,
+                            ServerDataTableName = srvTableName,
+                            LocalDataTableName = kineticTableName,
+                            DataViewName = kineticDataView.PatchedValue,
+                            AdditionalFields = additionalColumnsList
+                        };
+
+                        var serverDataSet = KnownDataSets?
+                            .Select(n => n.Value?.FirstOrDefault(m => m.Key == srvDataSetName))?
+                            .FirstOrDefault(n => n?.Key == srvDataSetName);
+
+                        if (serverDataSet?.Key == null)
+                        {
+                            var newReport = new ReportItem
+                            {
+                                ProjectName = _projectName,
+                                FullFileName = originalDataViewName.FullFileName,
+                                Message =
+                                    $"ServerDataSet \"{srvDataSetName}\" targeted in \"{originalDataViewName.PatchedValue}\" dataView is not found",
+                                FileType = originalDataViewName.FileType.ToString(),
+                                LineId = originalDataViewName.LineId.ToString(),
+                                JsonPath = originalDataViewName.JsonPath,
+                                LineNumber = originalDataViewName.SourceLineNumber.ToString(),
+                                ValidationType = ValidationTypeEnum.Logic.ToString(),
+                                Severity = ImportanceEnum.Error.ToString(),
+                                Source = methodName
+                            };
+                            report.Add(newReport);
+                        }
+                        //else
+                        //{
+                            var serverTable = serverDataSet?.Value?.FirstOrDefault(n => n.Key == srvTableName);
+
+                            if (serverTable?.Key == null)
+                            {
+                                var newReport = new ReportItem
+                                {
+                                    ProjectName = _projectName,
+                                    FullFileName = originalDataViewName.FullFileName,
+                                    Message =
+                                        $"ServerDataTable \"{srvTableName}\" targeted in \"{originalDataViewName.PatchedValue}\" dataView is not found",
+                                    FileType = originalDataViewName.FileType.ToString(),
+                                    LineId = originalDataViewName.LineId.ToString(),
+                                    JsonPath = originalDataViewName.JsonPath,
+                                    LineNumber = originalDataViewName.SourceLineNumber.ToString(),
+                                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                                    Severity = ImportanceEnum.Error.ToString(),
+                                    Source = methodName
+                                };
+
+                                report.Add(newReport);
+                            }
+                            else
+                            {
+                                if (serverTable.Value.Value != null)
+                                    newView.Fields.AddRange(serverTable?.Value);
+                            }
+
+                            var oldDv = _formDataViews.LastOrDefault(n => n.DataViewName == newView.DataViewName);
+                            if (oldDv == null)
+                            {
+                                _formDataViews.Add(newView);
+                            }
+                            else if (oldDv.IsLocal)
+                            {
+                                oldDv.DataViewName = newView.DataViewName;
+                                oldDv.SvcName = newView.SvcName;
+                                oldDv.ServerDataSetName = newView.ServerDataSetName;
+                                oldDv.LocalDataSetName = newView.LocalDataSetName;
+                                oldDv.ServerDataTableName = newView.ServerDataTableName;
+                                oldDv.LocalDataTableName = newView.LocalDataTableName;
+                                oldDv.Fields = newView.Fields;
+                                oldDv.AdditionalFields = newView.AdditionalFields;
+                                oldDv.IsLocal = newView.IsLocal;
+                            }
+                            else
+                            {
+                                var newReport = new ReportItem
+                                {
+                                    ProjectName = _projectName,
+                                    FullFileName = kineticDataView.FullFileName,
+                                    Message =
+                                        $"Dataview \"{newView.DataViewName}\" is overriding \"{oldDv.DataViewName}\"",
+                                    FileType = kineticDataView.FileType.ToString(),
+                                    LineId = kineticDataView.LineId.ToString(),
+                                    JsonPath = kineticDataView.JsonPath,
+                                    LineNumber = kineticDataView.SourceLineNumber.ToString(),
+                                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                                    Severity = ImportanceEnum.Error.ToString(),
+                                    Source = methodName
+                                };
+
+                                report.Add(newReport);
+                            }
+                        //}
+                    }
+                    // local dataView with no server source
+                    else
+                    {
+                        var newView = new KineticDataView
+                        {
+                            ServerDataSetName = srvDataSetName,
+                            LocalDataSetName = kineticDataSetName,
+                            ServerDataTableName = srvTableName,
+                            LocalDataTableName = kineticTableName,
+                            DataViewName = kineticDataView.PatchedValue,
+                            AdditionalFields = additionalColumnsList,
+                            IsLocal = true
+                        };
+
+                        var oldDv = _formDataViews.LastOrDefault(n => n.DataViewName == newView.DataViewName);
+                        if (oldDv == null)
+                        {
+                            _formDataViews.Add(newView);
+                        }
+                        else if (oldDv.IsLocal)
+                        {
+                            oldDv.DataViewName = newView.DataViewName;
+                            oldDv.SvcName = newView.SvcName;
+                            oldDv.ServerDataSetName = newView.ServerDataSetName;
+                            oldDv.LocalDataSetName = newView.LocalDataSetName;
+                            oldDv.ServerDataTableName = newView.ServerDataTableName;
+                            oldDv.LocalDataTableName = newView.LocalDataTableName;
+                            oldDv.Fields = newView.Fields;
+                            oldDv.AdditionalFields = newView.AdditionalFields;
+                            oldDv.IsLocal = newView.IsLocal;
+                        }
+                        else
+                        {
+                            var newReport = new ReportItem
+                            {
+                                ProjectName = _projectName,
+                                FullFileName = kineticDataView.FullFileName,
+                                Message =
+                                    $"Dataview \"{newView.DataViewName}\" is overriding \"{oldDv.DataViewName}\"",
+                                FileType = kineticDataView.FileType.ToString(),
+                                LineId = kineticDataView.LineId.ToString(),
+                                JsonPath = kineticDataView.JsonPath,
+                                LineNumber = kineticDataView.SourceLineNumber.ToString(),
+                                ValidationType = ValidationTypeEnum.Logic.ToString(),
+                                Severity = ImportanceEnum.Error.ToString(),
+                                Source = methodName
+                            };
+
+                            report.Add(newReport);
+                        }
+                    }
+                }
+
+                // collect all fields created by <row-update> and <search-value-set> for system and local dataViews
+                var fieldsList = new List<string[]>();
+
+                var rowUpdateList = _jsonPropertiesCollection
+                    .Where(n =>
+                        n.ItemType == JsonItemType.Property
+                        && n.FileType == KineticContentType.Events
+                        && !n.Shared
+                        && n.Name == "type"
+                        && n.PatchedValue == "row-update")
+                    .ToArray();
+
+                foreach (var item in rowUpdateList)
+                {
+                    fieldsList.AddRange(_jsonPropertiesCollection
+                        .Where(n =>
+                            n.ItemType == JsonItemType.Property
+                            && n.FullFileName == item.FullFileName
+                            && n.JsonPath.StartsWith(item.ParentPath + ".param[")
+                            && n.Name == "epBinding"
+                            && n.PatchedValue.Contains('.'))
+                        .Select(n => n.PatchedValue.Split('.')));
+                }
+
+                var searchValueSetList = _jsonPropertiesCollection
+                    .Where(n =>
+                        n.ItemType == JsonItemType.Property
+                        && n.FileType == KineticContentType.Events
+                        && !n.Shared
+                        && n.Name == "type"
+                        && n.PatchedValue == "search-value-set")
+                    .ToArray();
+
+                foreach (var item in searchValueSetList)
+                {
+                    fieldsList.AddRange(_jsonPropertiesCollection
+                        .Where(n =>
+                            n.ItemType == JsonItemType.Property
+                            && n.FullFileName == item.FullFileName
+                            && n.JsonPath == item.ParentPath + ".epBinding"
+                            && n.PatchedValue.Contains('.'))
+                        .Select(n => n.PatchedValue.Split('.')));
+                }
+
+                // if there is any grid with selection feature enabled then add "Selected" field to certain dataView
+                var selectableGrids = _jsonPropertiesCollection
+                    .Where(n =>
+                        n.ItemType == JsonItemType.Property
+                        && n.FileType == KineticContentType.Layout
+                        && n.Name == "epBinding"
+                        && _jsonPropertiesCollection.Any(m =>
+                            m.FullFileName == n.FullFileName
+                            && m.ParentPath == n.ParentPath + ".selectionOptions"
+                            && (m.Name == "showCheckBox" || m.Name == "showSelectAll")
+                            && m.PatchedValue.ToLower() == "true"
+                            )
+                        && _jsonPropertiesCollection.Any(m =>
+                            m.FullFileName == n.FullFileName
+                            && m.JsonPath == TrimPathEnd(n.ParentPath, 2) + ".sourceTypeId"
+                            && m.PatchedValue == "metafx-panel-card-grid")
+                        )
+                    .Select(n => n.PatchedValue).ToArray();
+
+                foreach (var dvName in selectableGrids)
+                {
+                    var dv = _formDataViews.FirstOrDefault(n => n.DataViewName == dvName);
+
+                    dv?.AdditionalFields.Add("Selected");
+                }
+
+                var dataViewsGrouped = fieldsList.GroupBy(n => n[0]);
+
+                foreach (var dataView in dataViewsGrouped)
+                {
+                    var dv = _formDataViews.FirstOrDefault(n => n.DataViewName == dataView.Key);
+
+                    if (dv == null) continue;
+
+                    foreach (var field in dataView)
+                    {
+                        dv.AdditionalFields.Add(field[1]);
+                    }
+
+                    dv.AdditionalFields = dv.AdditionalFields.Distinct().ToList();
+
+                    if (dv.IsLocal) continue;
+
+                    //remove any server fields
+                    for (var i = 0; i < dv.AdditionalFields.Count; i++)
+                    {
+                        if (dv.Fields.Contains(dv.AdditionalFields[i]))
+                        {
+                            dv.AdditionalFields.RemoveAt(i);
+                            i--;
+                        }
+                    }
+                }
+            }
+
+            return report;
+        }
+
         private static Dictionary<string, string> CollectPatchValues()
         {
             var patchList = _jsonPropertiesCollection
@@ -1021,6 +1474,22 @@ namespace KineticValidator
             return patchValues;
         }
 
+        private enum ExpressionErrorCode
+        {
+            NoProblem,
+            IncorrectOperator,
+            IncompleteExpression,
+            MissingValueField,
+            MissingFieldEmbracement,
+            OddFieldEmbracement,
+            MissingOperator,
+            InconsistentBrackets,
+            InconsistentValueFields,
+            FieldNotExists,
+            DataViewNotExists,
+            KeyWordNotExists,
+        }
+
         private enum TokenType
         {
             TextField,
@@ -1030,17 +1499,6 @@ namespace KineticValidator
             BracketClose
         }
 
-        private enum ExpressionErrorCode
-        {
-            NoProblem,
-            IncorrectOperator,
-            IncompleteExpression,
-            MissingValueField,
-            MissingOperator,
-            InconsistentBrackets,
-            InconsistentValueFields
-        }
-
         private class ExpressionToken
         {
             public TokenType Type;
@@ -1048,17 +1506,20 @@ namespace KineticValidator
         }
 
         private static ExpressionErrorCode IsExpressionValid(string expression, out List<ExpressionToken> tokens,
-            bool sqlType = false)
+            bool sqlType = false, string dataView = "")
         {
             tokens = new List<ExpressionToken>();
 
-            expression = expression?.Trim().ToLower();
+            expression = expression?.Trim();
 
             if (string.IsNullOrEmpty(expression))
                 return ExpressionErrorCode.NoProblem;
 
             var operators = new[] { "===", "!==", "==", "!=", "&&", "||", "<=", ">=", "<", ">", "!", "=" };
             var postProcessOperators = new[] { "and", "not", "or" };
+            var javaStyleOnly = new[] { "===", "!==", "==", "!=", "&&", "||", "!" };
+            var sqlStyleOnly = new[] { "<>", "and", "not", "or" };
+
             if (sqlType)
                 operators = new[] { "<>", "<=", ">=", "=", "<", ">" };
 
@@ -1261,7 +1722,7 @@ namespace KineticValidator
 
             if (sqlType)
             {
-                foreach (var t in tokens.Where(t => postProcessOperators.Contains(t.Value)))
+                foreach (var t in tokens.Where(t => postProcessOperators.Contains(t.Value.ToLower())))
                     t.Type = TokenType.Operator;
             }
 
@@ -1278,7 +1739,7 @@ namespace KineticValidator
             {
                 if (!sqlType && tokens[0].Value != "!")
                     return ExpressionErrorCode.IncompleteExpression;
-                if (sqlType && tokens[0].Value != "not")
+                if (sqlType && tokens[0].Value.ToLower() != "not")
                     return ExpressionErrorCode.IncompleteExpression;
             }
 
@@ -1291,10 +1752,23 @@ namespace KineticValidator
                 // no operators can come together
                 if (currentT.Type == TokenType.Operator && previousT.Type == TokenType.Operator)
                 {
-                    if (sqlType && currentT.Value != "not")
+                    if (sqlType && currentT.Value.ToLower() != "not")
+                    {
+                        if (javaStyleOnly.Contains(previousT.Value + currentT.Value))
+                        {
+                            return ExpressionErrorCode.IncorrectOperator;
+                        }
                         return ExpressionErrorCode.MissingValueField;
+                    }
+
                     if (!sqlType && currentT.Value != "!")
+                    {
+                        if (sqlStyleOnly.Contains(previousT.Value + currentT.Value))
+                        {
+                            return ExpressionErrorCode.IncorrectOperator;
+                        }
                         return ExpressionErrorCode.MissingValueField;
+                    }
                 }
 
                 // no fields can come together
@@ -1358,6 +1832,100 @@ namespace KineticValidator
                 }
             }
 
+            // check dataFields existence
+            foreach (var token in tokens.Where(n => n.Type == TokenType.ValueField && !IsNumeric(n.Value)).Select(n => n.Value))
+            {
+                var systemKeyWords = new[] { "true", "false" };
+                if (systemKeyWords.Contains(token.ToLower()))
+                {
+                    return ExpressionErrorCode.NoProblem;
+                }
+
+                if (!sqlType)
+                {
+
+                    if (token.Contains("%"))
+                    {
+                        if (token.Contains('.'))
+                        {
+                            var systemMacro = new[] { "count%", "hasrow%", "row%", "haschanges%" };
+                            var dv = token.Split('.');
+                            if (!systemMacro.Contains(dv[1].ToLower()))
+                            {
+                                return ExpressionErrorCode.KeyWordNotExists;
+                            }
+
+                            if (!DataViewExists(token.Trim('%')))
+                            {
+                                return ExpressionErrorCode.DataViewNotExists;
+                            }
+                        }
+                    }
+                    else if (token.Contains('.'))
+                    {
+                        if (token.ToLower().StartsWith("context."))
+                        {
+                            return ExpressionErrorCode.NoProblem;
+                        }
+
+                        if (!token.StartsWith("{") || !token.EndsWith("}"))
+                        {
+                            return ExpressionErrorCode.MissingFieldEmbracement;
+                        }
+
+                        if (!DataFieldExists(token))
+                        {
+                            return ExpressionErrorCode.FieldNotExists;
+                        }
+                    }
+                    else if (!DataViewExists(token))
+                    {
+                        return ExpressionErrorCode.FieldNotExists;
+                    }
+                }
+                else
+                {
+                    var sqlToken = token.Replace("[", "").Replace("]", "");
+                    if (sqlToken.Contains(".$"))
+                    {
+                        var sqlKeyWords = new[] { "$rowcount" };
+                        var dv = sqlToken.Split('.');
+                        if (!sqlKeyWords.Contains(dv[1].ToLower()))
+                        {
+                            return ExpressionErrorCode.KeyWordNotExists;
+                        }
+
+                        if (!DataViewExists(dv[0]))
+                        {
+                            return ExpressionErrorCode.DataViewNotExists;
+                        }
+                    }
+                    else if (sqlToken.Contains("%"))
+                    {
+
+                    }
+                    else if (sqlToken.Contains('.'))
+                    {
+                        if (sqlToken.StartsWith("{") || sqlToken.EndsWith("}"))
+                        {
+                            return ExpressionErrorCode.OddFieldEmbracement;
+                        }
+
+                        if (!DataFieldExists(sqlToken))
+                        {
+                            return ExpressionErrorCode.FieldNotExists;
+                        }
+                    }
+                    else if (!string.IsNullOrEmpty(dataView))
+                    {
+                        if (!DataFieldExists(dataView + "." + sqlToken))
+                        {
+                            return ExpressionErrorCode.FieldNotExists;
+                        }
+                    }
+                }
+            }
+
             return ExpressionErrorCode.NoProblem;
         }
 
@@ -1367,31 +1935,24 @@ namespace KineticValidator
 
         private static IEnumerable<ReportItem> RunValidation(string methodName)
         {
-            var startTime = DateTime.Now;
-            Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
             return _runValidationReportsCollection;
         }
 
         private static IEnumerable<ReportItem> DeserializeFile(string methodName)
         {
-            var startTime = DateTime.Now;
-            Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
             return _deserializeFileReportsCollection;
         }
 
         private static IEnumerable<ReportItem> ParseJsonObject(string methodName)
         {
-            var startTime = DateTime.Now;
-            Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
             return _parseJsonObjectReportsCollection;
         }
 
         private static IEnumerable<ReportItem> SchemaValidation(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
+#endif
             // validate every file with schema
             var report = new BlockingCollection<ReportItem>();
             Parallel.ForEach(_processedFilesList, file =>
@@ -1402,15 +1963,17 @@ namespace KineticValidator
                     report.Add(item);
             });
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> RedundantFiles(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             // collect full list of files inside the project folder (not including shared)
             var fullFilesList = new List<string>();
             var foundFiles = Directory.GetFiles(_projectPath, _fileMask, SearchOption.AllDirectories);
@@ -1430,15 +1993,17 @@ namespace KineticValidator
                 })
                 .ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> ValidateFileChars(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var report = new List<ReportItem>();
 
             var propertyCollection = _jsonPropertiesCollection.Where(n =>
@@ -1500,15 +2065,17 @@ namespace KineticValidator
                 }
             }
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> DuplicateIds(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var report = new List<ReportItem>();
 
             foreach (var file in _processedFilesList)
@@ -1557,21 +2124,59 @@ namespace KineticValidator
                 }
             }
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
-        private static IEnumerable<ReportItem> EmptyPatchNames(string methodName)
+        private static IEnumerable<ReportItem> DottedPropertyNames(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
+#endif
+            var dvFields = new List<string[]>();
 
+            var ruleDataViewList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && !n.Shared
+                    && n.Name.Contains('.')
+                )
+                .ToArray();
+
+            var report = ruleDataViewList
+                .Select(n => new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = n.FullFileName,
+                    Message =
+                        $"Property name should not contain \'.\' char",
+                    FileType = n.FileType.ToString(),
+                    LineId = n.LineId.ToString(),
+                    JsonPath = n.JsonPath,
+                    LineNumber = n.SourceLineNumber.ToString(),
+                    ValidationType = ValidationTypeEnum.Scheme.ToString(),
+                    Severity = ImportanceEnum.Warning.ToString(),
+                    Source = methodName
+                })
+                .ToArray();
+
+#if DEBUG
+            Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
+#endif
+            return report;
+        }
+
+        private static IEnumerable<ReportItem> EmptyIdNames(string methodName)
+        {
+#if DEBUG
+            var startTime = DateTime.Now;
+#endif
             var emptyPatchList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == KineticContentType.Patch
                     && !n.Shared
-                    && n.Parent == "patch"
                     && n.Name == "id"
                     && string.IsNullOrEmpty(n.Value))
                 .ToArray();
@@ -1585,22 +2190,24 @@ namespace KineticValidator
                     LineId = patchResource.LineId.ToString(),
                     JsonPath = patchResource.JsonPath,
                     LineNumber = patchResource.SourceLineNumber.ToString(),
-                    Message = $"Patch id \"{patchResource.Value}\" is empty",
+                    Message = $"id \"{patchResource.Value}\" is empty",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Error.ToString(),
                     Source = methodName
                 })
                 .ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> RedundantPatches(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var patchList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -1633,15 +2240,17 @@ namespace KineticValidator
                 })
                 .ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> CallNonExistingPatches(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var patchList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -1673,15 +2282,17 @@ namespace KineticValidator
                 })
                 .ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> OverridingPatches(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var duplicatePatchesList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -1749,15 +2360,17 @@ namespace KineticValidator
                 }
             }
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> PossiblePatchValues(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             if (_patchValues == null || _patchValues.Count == 0)
                 _patchValues = CollectPatchValues();
 
@@ -1802,15 +2415,17 @@ namespace KineticValidator
                 report.Add(reportItem);
             }
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> HardCodedStrings(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var stringsList = _jsonPropertiesCollection
                 .Where(n =>
                     !n.Shared
@@ -1835,15 +2450,17 @@ namespace KineticValidator
                 Source = methodName
             }).ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> PossibleStringsValues(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var stringsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -1894,15 +2511,17 @@ namespace KineticValidator
                 report.Add(reportItem);
             }
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> EmptyStringNames(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var emptyStringsList = _jsonPropertiesCollection
                 .Where(n =>
                     !n.Shared
@@ -1928,15 +2547,17 @@ namespace KineticValidator
                 })
                 .ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> EmptyStringValues(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var emptyStringsList = _jsonPropertiesCollection
                 .Where(n =>
                     !n.Shared
@@ -1962,15 +2583,17 @@ namespace KineticValidator
                 })
                 .ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> RedundantStrings(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var stringsList = _jsonPropertiesCollection
                 .Where(n =>
                     !n.Shared
@@ -2002,15 +2625,17 @@ namespace KineticValidator
                 })
                 .ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> CallNonExistingStrings(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var stringsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2050,15 +2675,17 @@ namespace KineticValidator
                 })
                 .ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> OverridingStrings(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var duplicateStringsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2107,48 +2734,17 @@ namespace KineticValidator
                 }
             }
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
-            return report;
-        }
-
-        private static IEnumerable<ReportItem> EmptyEventNames(string methodName)
-        {
-            var startTime = DateTime.Now;
-
-            var emptyIdsList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && n.FileType == KineticContentType.Events
-                    && n.Name == "id"
-                    && n.Parent == "events"
-                    && string.IsNullOrEmpty(n.PatchedValue))
-                .ToArray();
-
-            var report = emptyIdsList.Select(id => new ReportItem
-            {
-                ProjectName = _projectName,
-                FullFileName = id.FullFileName,
-                FileType = id.FileType.ToString(),
-                LineId = id.LineId.ToString(),
-                JsonPath = id.JsonPath,
-                LineNumber = id.SourceLineNumber.ToString(),
-                Message = $"Event id \"{id.PatchedValue}\" is empty",
-                ValidationType = ValidationTypeEnum.Logic.ToString(),
-                Severity = ImportanceEnum.Error.ToString(),
-                Source = methodName
-            })
-                .ToArray();
-
-            Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> EmptyEvents(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var emptyEventsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2185,16 +2781,72 @@ namespace KineticValidator
                     Severity = ImportanceEnum.Note.ToString(),
                     Source = methodName
                 })
+                .ToList();
+
+            var childEventNames = new[]
+            {
+                "onsuccess",
+                "onfailure",
+                "onerror",
+                "onsinglematch",
+                "onmultiplematch",
+                "onnomatch",
+                "onyes",
+                "onno",
+                "onok",
+                "oncancel",
+                "onabort",
+                "onempty"
+            };
+
+            var emptyEventsList2 = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType == KineticContentType.Events
+                    && childEventNames.Contains(n.Name.ToLower())
+                    && !n.Shared)
                 .ToArray();
 
-            Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
+            var report2 = emptyEventsList2
+                .Select(id => new
+                {
+                    id,
+                    objectMembers = _jsonPropertiesCollection
+                        .Where(n =>
+                            n.ItemType == JsonItemType.Property
+                            && n.FullFileName == id.FullFileName
+                            && n.Name == "type"
+                            && TrimArrayName(n.ParentPath) == id.JsonPath)
+                })
+                .Select(n => new { m = n, actionFound = n.objectMembers.Any() })
+                .Where(n => !n.actionFound)
+                .Select(n => new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = n.m.id.FullFileName,
+                    Message = $"Event \"{n.m.id.Name}\" has no actions",
+                    FileType = n.m.id.FileType.ToString(),
+                    LineId = n.m.id.LineId.ToString(),
+                    JsonPath = n.m.id.JsonPath,
+                    LineNumber = n.m.id.SourceLineNumber.ToString(),
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Note.ToString(),
+                    Source = methodName
+                })
+                .ToArray();
+            report.AddRange(report2);
 
+#if DEBUG
+            Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> OverridingEvents(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
+#endif
 
             var duplicateIdsList = _jsonPropertiesCollection
                 .Where(n =>
@@ -2289,15 +2941,17 @@ namespace KineticValidator
                 }
             }
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> RedundantEvents(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var eventsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2354,15 +3008,17 @@ namespace KineticValidator
                 })
                 .ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> CallNonExistingEvents(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var eventsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2408,51 +3064,18 @@ namespace KineticValidator
                 })
                 .ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
-            return report;
-        }
-
-        private static IEnumerable<ReportItem> EmptyDataViewNames(string methodName)
-        {
-            var startTime = DateTime.Now;
-
-            var emptyDataViewList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && n.FileType == KineticContentType.DataViews
-                    && !n.Shared
-                    && n.Parent == "dataviews"
-                    && n.Name == "id"
-                    && string.IsNullOrEmpty(n.PatchedValue))
-                .ToArray();
-
-            var report = emptyDataViewList
-                .Select(viewResource => new ReportItem
-                {
-                    ProjectName = _projectName,
-                    FullFileName = viewResource.FullFileName,
-                    FileType = viewResource.FileType.ToString(),
-                    LineId = viewResource.LineId.ToString(),
-                    JsonPath = viewResource.JsonPath,
-                    LineNumber = viewResource.SourceLineNumber.ToString(),
-                    Message = $"DataView id \"{viewResource.PatchedValue}\" is empty",
-                    ValidationType = ValidationTypeEnum.Logic.ToString(),
-                    Severity = ImportanceEnum.Error.ToString(),
-                    Source = methodName
-                })
-                .ToArray();
-
-            Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         // rework - not all cases managed
         private static IEnumerable<ReportItem> RedundantDataViews(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var dataViewList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2484,15 +3107,17 @@ namespace KineticValidator
                 })
                 .ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> CallNonExistingDataViews(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var dataViewList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2584,15 +3209,17 @@ namespace KineticValidator
                     }));
             }
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> OverridingDataViews(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var duplicateViewsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2621,6 +3248,9 @@ namespace KineticValidator
                 var viewDup = dup.ToArray();
                 for (var i = 1; i < viewDup.Count(); i++)
                 {
+                    var severity = ImportanceEnum.Error;
+                    if (viewDup[i - 1].Shared) severity = ImportanceEnum.Warning;
+
                     var reportItem = new ReportItem
                     {
                         ProjectName = _projectName,
@@ -2641,23 +3271,24 @@ namespace KineticValidator
                                      + _splitChar
                                      + viewDup[i].SourceLineNumber,
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
-                        Severity = ImportanceEnum.Error.ToString(),
+                        Severity = severity.ToString(),
                         Source = methodName
                     };
                     report.Add(reportItem);
                 }
             }
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
-        // rework - not all cases managed
         private static IEnumerable<ReportItem> CallNonExistingDataTables(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var dataTableList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2675,7 +3306,8 @@ namespace KineticValidator
                 var usedDataTable = "";
 
                 if (property.FileType == KineticContentType.Events
-                    && property.Parent == "trigger"
+                    && (
+                    (property.Parent == "trigger"
                     && property.Name == "target"
                     && !string.IsNullOrEmpty(property.PatchedValue)
                     && !property.PatchedValue.Contains('.')
@@ -2686,6 +3318,16 @@ namespace KineticValidator
                             && m.ParentPath == property.ParentPath
                             && m.Name == "type"
                             && m.PatchedValue == "DataTable"))
+                    ||
+                    (property.Name == "dataTable"
+                    && _jsonPropertiesCollection
+                        .Any(m =>
+                            m.ItemType == JsonItemType.Property
+                            && m.FullFileName == property.FullFileName
+                            && m.ParentPath == property.ParentPath
+                            && m.Name == "type"
+                            && (m.PatchedValue == "event-column-disable" || m.PatchedValue == "event-column-enable"))))
+                    )
                 {
                     usedDataTable = property.PatchedValue;
                 }
@@ -2713,49 +3355,17 @@ namespace KineticValidator
                 }
             }
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
-            return report;
-        }
-
-        private static IEnumerable<ReportItem> EmptyRuleNames(string methodName)
-        {
-            var startTime = DateTime.Now;
-
-            var emptyRulesList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && n.FileType == KineticContentType.Rules
-                    && n.Parent == "rules"
-                    && n.Name == "id"
-                    && string.IsNullOrEmpty(n.PatchedValue))
-                .ToArray();
-
-            var report = emptyRulesList
-                .Select(dup => new ReportItem
-                {
-                    ProjectName = _projectName,
-                    FullFileName = dup.FullFileName,
-                    Message = $"Rule id \"{dup.PatchedValue}\" is empty",
-                    FileType = dup.FileType.ToString(),
-                    LineId = dup.LineId.ToString(),
-                    JsonPath = dup.JsonPath,
-                    LineNumber = dup.SourceLineNumber.ToString(),
-                    ValidationType = ValidationTypeEnum.Logic.ToString(),
-                    Severity = ImportanceEnum.Error.ToString(),
-                    Source = methodName
-                })
-                .ToArray();
-
-            Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> EmptyRules(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var emptyEventsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2799,15 +3409,17 @@ namespace KineticValidator
                 })
                 .ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> NoConditionRules(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var emptyEventsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2845,15 +3457,17 @@ namespace KineticValidator
                 })
                 .ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> OverridingRules(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var duplicateRulesList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2901,49 +3515,17 @@ namespace KineticValidator
                 }
             }
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
-            return report;
-        }
-
-        private static IEnumerable<ReportItem> EmptyToolNames(string methodName)
-        {
-            var startTime = DateTime.Now;
-
-            var emptyToolsList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && n.FileType == KineticContentType.Tools
-                    && n.Parent == "tools"
-                    && n.Name == "id"
-                    && string.IsNullOrEmpty(n.PatchedValue))
-                .ToArray();
-
-            var report = emptyToolsList
-                .Select(dup => new ReportItem
-                {
-                    ProjectName = _projectName,
-                    FullFileName = dup.FullFileName,
-                    Message = $"Tool id \"{dup.PatchedValue}\" is empty",
-                    FileType = dup.FileType.ToString(),
-                    LineId = dup.LineId.ToString(),
-                    JsonPath = dup.JsonPath,
-                    LineNumber = dup.SourceLineNumber.ToString(),
-                    ValidationType = ValidationTypeEnum.Logic.ToString(),
-                    Severity = ImportanceEnum.Error.ToString(),
-                    Source = methodName
-                })
-                .ToArray();
-
-            Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> OverridingTools(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var duplicateToolsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -2991,15 +3573,17 @@ namespace KineticValidator
                 }
             }
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> MissingForms(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var formsList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -3103,15 +3687,17 @@ namespace KineticValidator
                 }
             }
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> MissingSearches(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var searchesList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -3213,15 +3799,17 @@ namespace KineticValidator
                 }
             }
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> JsCode(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var jsPatternsList = _jsonPropertiesCollection
                 .Where(n =>
                     !n.Shared
@@ -3242,15 +3830,17 @@ namespace KineticValidator
                 Source = methodName
             }).ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> JsDataViewCount(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var jsPatternsList = _jsonPropertiesCollection
                 .Where(n =>
                     !n.Shared
@@ -3272,15 +3862,17 @@ namespace KineticValidator
                 Source = methodName
             }).ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> IncorrectDvConditionViewName(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var dvConditionsList = _jsonPropertiesCollection
                 .Where(n =>
                     !n.Shared
@@ -3346,15 +3938,17 @@ namespace KineticValidator
                 }
             }
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> IncorrectRestCalls(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var restCallsList = _jsonPropertiesCollection
                 .Where(n =>
                     !n.Shared
@@ -3570,236 +4164,37 @@ namespace KineticValidator
                 }
             }
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
-        // update - datatables processing
         private static IEnumerable<ReportItem> IncorrectFieldUsages(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var report = new List<ReportItem>();
 
-            var svcList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && (n.FileType == KineticContentType.Events
-                        || n.FileType == KineticContentType.Patch
-                        || n.FileType == KineticContentType.Layout)
-                    && n.Name == "svc"
-                    && !string.IsNullOrEmpty(n.PatchedValue))
-                .Select(n => n.PatchedValue)
-                .Distinct()
-                .ToArray();
-
-            foreach (var svc in svcList)
-                LoadService(svc, _serverAssembliesPath);
-
-            // collect dataview definitions
-            var dataViewList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && n.FileType == KineticContentType.DataViews
-                    && n.Parent == "dataviews" && n.Name == "id"
-                    || n.FileType == KineticContentType.Events
-                    && n.Parent == "param"
-                    && n.Name == "result"
-                    && !string.IsNullOrEmpty(n.PatchedValue))
-                .GroupBy(n => n.PatchedValue)
-                .Select(n => n.Last())
-                .ToArray();
-
-            // add all system dataViews
-            foreach (var item in _systemDataViews)
+            if (_formDataViews.Count <= 0)
             {
-                var newView = new KineticDataView
-                {
-                    DataViewName = item
-                };
-                _formDataViews.Add(newView);
+                report.AddRange(CollectDataViewInfo(methodName));
             }
 
-            var localDataViews = new List<string>();
-            localDataViews.AddRange(_systemDataViews);
-
-            // collect complete info (dataSet/dataTable/fields/additional fields) for every dataView
-            foreach (var kineticDataView in dataViewList)
-                // temp. view for <dataview-condition>
-                if (kineticDataView.Name == "result")
-                {
-                    localDataViews.Add(kineticDataView.PatchedValue);
-                    var newView = new KineticDataView
-                    {
-                        DataViewName = kineticDataView.PatchedValue
-                    };
-
-                    _formDataViews.Add(newView);
-                }
-                // real dataview
-                else
-                {
-                    var kineticTableName = _jsonPropertiesCollection
-                        .FirstOrDefault(n => n.ItemType == JsonItemType.Property
-                                             && n.FullFileName == kineticDataView.FullFileName
-                                             && n.JsonPath == kineticDataView.JsonPath.Replace(".id", ".table")
-                                             && !string.IsNullOrEmpty(n.PatchedValue))?
-                        .PatchedValue;
-
-                    var kineticDataSetName = _jsonPropertiesCollection
-                        .FirstOrDefault(n =>
-                            n.ItemType == JsonItemType.Property
-                            && n.FullFileName == kineticDataView.FullFileName
-                            && n.JsonPath == kineticDataView.JsonPath.Replace(".id", ".datasetId")
-                            && !string.IsNullOrEmpty(n.PatchedValue))?
-                        .PatchedValue;
-
-                    var srvDataSetName = _jsonPropertiesCollection
-                        .FirstOrDefault(n =>
-                            n.ItemType == JsonItemType.Property
-                            && n.FullFileName == kineticDataView.FullFileName
-                            && n.JsonPath == kineticDataView.JsonPath.Replace(".id", ".serverDataset")
-                            && !string.IsNullOrEmpty(n.PatchedValue))?
-                        .PatchedValue;
-
-                    var srvTableName = _jsonPropertiesCollection
-                        .FirstOrDefault(n =>
-                            n.ItemType == JsonItemType.Property
-                            && n.FullFileName == kineticDataView.FullFileName
-                            && n.JsonPath == kineticDataView.JsonPath.Replace(".id", ".serverTable")
-                            && !string.IsNullOrEmpty(n.PatchedValue))?
-                        .PatchedValue;
-
-                    var additionalColumnsList = _jsonPropertiesCollection
-                        .Where(n =>
-                            n.ItemType == JsonItemType.Property
-                            && n.FullFileName == kineticDataView.FullFileName
-                            && n.JsonPath == kineticDataView.JsonPath.Replace(".id", ".additionalColumns")
-                            && !string.IsNullOrEmpty(n.PatchedValue))?
-                        .Select(n => n.PatchedValue)?
-                        .ToList();
-
-                    // real dataView with server source
-                    if (!string.IsNullOrEmpty(kineticDataSetName)
-                        && !string.IsNullOrEmpty(srvDataSetName)
-                        && !string.IsNullOrEmpty(srvTableName))
-                    {
-                        var newView = new KineticDataView
-                        {
-                            SvcName = "",
-                            ServerDataSetName = srvDataSetName,
-                            LocalDataSetName = kineticDataSetName,
-                            ServerDataTableName = srvTableName,
-                            LocalDataTableName = kineticTableName,
-                            DataViewName = kineticDataView.PatchedValue,
-                            AdditionalFields = additionalColumnsList
-                        };
-
-                        var serverDataSet = KnownDataSets?
-                            .Select(n => n.Value?.FirstOrDefault(m => m.Key == srvDataSetName))?
-                            .FirstOrDefault(n => n?.Key == srvDataSetName);
-
-                        if (serverDataSet?.Key == null)
-                        {
-                            var newReport = new ReportItem
-                            {
-                                ProjectName = _projectName,
-                                FullFileName = kineticDataView.FullFileName,
-                                Message =
-                                    $"ServerDataSet \"{srvDataSetName}\" targeted in \"{kineticDataView.PatchedValue}\" dataView is not found",
-                                FileType = kineticDataView.FileType.ToString(),
-                                LineId = kineticDataView.LineId.ToString(),
-                                JsonPath = kineticDataView.JsonPath,
-                                LineNumber = kineticDataView.SourceLineNumber.ToString(),
-                                ValidationType = ValidationTypeEnum.Logic.ToString(),
-                                Severity = ImportanceEnum.Error.ToString(),
-                                Source = methodName
-                            };
-                            report.Add(newReport);
-                        }
-                        else
-                        {
-                            var serverTable = serverDataSet?.Value?.FirstOrDefault(n => n.Key == srvTableName);
-
-                            if (serverTable?.Key == null)
-                            {
-                                var newReport = new ReportItem
-                                {
-                                    ProjectName = _projectName,
-                                    FullFileName = kineticDataView.FullFileName,
-                                    Message =
-                                        $"ServerDataTable \"{srvTableName}\" targeted in \"{kineticDataView.PatchedValue}\" dataView is not found",
-                                    FileType = kineticDataView.FileType.ToString(),
-                                    LineId = kineticDataView.LineId.ToString(),
-                                    JsonPath = kineticDataView.JsonPath,
-                                    LineNumber = kineticDataView.SourceLineNumber.ToString(),
-                                    ValidationType = ValidationTypeEnum.Logic.ToString(),
-                                    Severity = ImportanceEnum.Error.ToString(),
-                                    Source = methodName
-                                };
-
-                                report.Add(newReport);
-                            }
-                            else
-                            {
-                                if (serverTable.Value.Value != null)
-                                    newView.Fields.AddRange(serverTable?.Value);
-                            }
-
-                            _formDataViews.Add(newView);
-                        }
-                    }
-                    // local dataView with no server source
-                    else
-                    {
-                        localDataViews.Add(kineticDataView.PatchedValue);
-
-                        var newView = new KineticDataView
-                        {
-                            SvcName = "",
-                            ServerDataSetName = srvDataSetName,
-                            LocalDataSetName = kineticDataSetName,
-                            ServerDataTableName = srvTableName,
-                            LocalDataTableName = kineticTableName,
-                            DataViewName = kineticDataView.PatchedValue,
-                            AdditionalFields = additionalColumnsList
-                        };
-                        _formDataViews.Add(newView);
-                    }
-                }
-
-            // collect all fields created by <row-update> and <search-value-set> in system and local dataViews
-            /*var rowUpdates = _jsonPropertiesCollection.Where(n =>
-            n.ItemType == JsonItemType.Property
-            && n.FileType == KineticContentType.Events
-            && n.Name == "epBinding"
-            && (
-            (_jsonPropertiesCollection.Any(m => m.ParentPath == n.ParentPath.Replace(".param.columns", ".type") && m.PatchedValue == "row-update"))
-            ||
-            (_jsonPropertiesCollection.Any(m => m.ParentPath == n.ParentPath && m.Name == "type" && m.Value == "search-value-set"))
-            ));
-
-            var tmpFields = rowUpdates
-                .Select(n => n.PatchedValue)
-                .Distinct()
-                .Select(n => n.Split('.'))
-                .GroupBy(n => n[0]);*/
+            var localDataViews = _formDataViews?.Where(n => n.IsLocal).Select(n => n.DataViewName).ToArray();
 
             //check every value field for a {dataView.field} pattern and check it certain combination exists
             foreach (var item in _jsonPropertiesCollection.Where(n =>
                 n.ItemType == JsonItemType.Property
+                && !string.IsNullOrEmpty(n.PatchedValue)
                 && !n.Shared))
             {
-                List<string> fields = new List<string>();
+                var fields = new List<string>();
                 if (item.Name == "epBinding")
                 {
                     var tokens = item.PatchedValue.Split(',');
-                    foreach (var t in tokens)
-                    {
-                        if (string.IsNullOrEmpty(t))
-                            fields.Add(t);
-                    }
+                    fields.AddRange(tokens.Where(t => string.IsNullOrEmpty(t)));
                 }
                 else if (item.FileType == KineticContentType.Layout
                     && item.Name == "field"
@@ -3815,7 +4210,7 @@ namespace KineticValidator
                 }
                 else
                 {
-                    fields.AddRange(GetTableField(item.PatchedValue).Where(n => n.IndexOfAny(new[] { '%', '{', '}' }) <= 0));
+                    fields.AddRange(GetTableField(item.PatchedValue).Where(n => n.IndexOfAny(new[] { '%', '{', '}' }) < 0));
                 }
 
                 if (fields.Count <= 0)
@@ -3824,10 +4219,10 @@ namespace KineticValidator
                 if (string.IsNullOrEmpty(fields[0]))
                     continue;
 
-                foreach (var field in fields)
+                foreach (var tokens in fields.Select(field => field.Split('.')))
                 {
-                    var tokens = field.Split('.');
-                    if (_formDataViews.All(n => n.DataViewName != tokens[0]))
+                    var dvName = _formDataViews?.Where(n => n.DataViewName == tokens[0]).ToArray();
+                    if (dvName == null || !dvName.Any())
                     {
                         var newReport = new ReportItem
                         {
@@ -3844,8 +4239,9 @@ namespace KineticValidator
                         };
                         report.Add(newReport);
                     }
-                    else if (tokens.Length > 1 && !localDataViews.Contains(tokens[0]) && !_formDataViews.Any(n =>
-                        n.DataViewName == tokens[0] && n.Fields.Contains(tokens[1])))
+                    else if (tokens.Length > 1
+                             && !localDataViews.Contains(tokens[0])
+                             && (!dvName.Any(n => n.AllFields.Contains(tokens[1]))))
                     {
                         var newReport = new ReportItem
                         {
@@ -3865,15 +4261,83 @@ namespace KineticValidator
                 }
             }
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
+#endif
+            return report;
+        }
 
+        private static IEnumerable<ReportItem> UnEnclosedFieldValue(string methodName)
+        {
+#if DEBUG
+            var startTime = DateTime.Now;
+#endif
+            var report = new List<ReportItem>();
+
+            if (_formDataViews.Count <= 0)
+            {
+                report.AddRange(CollectDataViewInfo(methodName));
+            }
+
+            var dvFields = new List<string[]>();
+
+            var rowUpdateList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType == KineticContentType.Events
+                    && !n.Shared
+                    && n.Name == "type"
+                    && n.PatchedValue == "row-update")
+                .ToArray();
+
+            var valueList = new List<JsonProperty>();
+            foreach (var item in rowUpdateList)
+            {
+                valueList.AddRange(_jsonPropertiesCollection
+                    .Where(n =>
+                        n.ItemType == JsonItemType.Property
+                        && n.FullFileName == item.FullFileName
+                        && n.JsonPath.StartsWith(item.ParentPath)
+                        && n.Name == "value"
+                        && !string.IsNullOrEmpty(n.PatchedValue)
+                        && n.PatchedValue.Contains('.')
+                    ));
+            }
+
+            report.AddRange(valueList
+                .Select(item => new
+                {
+                    item,
+                    fields = GetTableField(item.PatchedValue, true)
+                        .Where(n => n.Contains('.') && n.IndexOfAny(new[] { '%', '{', '}' }) < 0)
+                        .ToArray()
+                })
+                .SelectMany(item1 => item1.fields, (item2, field) => new { item3 = item2, field })
+                .Where(item4 => DataViewExists(item4.field))
+                .Select(item5 => new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = item5.item3.item.FullFileName,
+                    Message = "Data-field \"" + item5.field + "\" in 'row-update'->'value' should be enclosed in '{}'",
+                    FileType = item5.item3.item.FileType.ToString(),
+                    LineId = item5.item3.item.LineId.ToString(),
+                    JsonPath = item5.item3.item.JsonPath,
+                    LineNumber = item5.item3.item.SourceLineNumber.ToString(),
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Error.ToString(),
+                    Source = methodName
+                }));
+#if DEBUG
+            Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> MissingLayoutIds(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var layoutIdList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -3910,15 +4374,17 @@ namespace KineticValidator
                 })
                 .ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> IncorrectEventExpression(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var expressionList = _jsonPropertiesCollection
                 .Where(n =>
                     !n.Shared
@@ -3934,7 +4400,13 @@ namespace KineticValidator
                         && m.PatchedValue == "condition"))
                 .ToArray();
 
-            var report = expressionList
+            var report = new List<ReportItem>();
+            if (_formDataViews.Count <= 0)
+            {
+                report.AddRange(CollectDataViewInfo(methodName));
+            }
+
+            report.AddRange(expressionList
                 .Select(expression => new { expression, result = IsExpressionValid(expression.PatchedValue, out _) })
                 .Where(n => n.result != ExpressionErrorCode.NoProblem)
                 .Select(n => new ReportItem
@@ -3949,18 +4421,19 @@ namespace KineticValidator
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Error.ToString(),
                     Source = methodName
-                })
-                .ToArray();
+                }));
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> IncorrectRuleConditions(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var conditionList = _jsonPropertiesCollection
                 .Where(n =>
                     !n.Shared
@@ -3970,7 +4443,13 @@ namespace KineticValidator
                     && n.Parent == "rules")
                 .ToArray();
 
-            var report = conditionList
+            var report = new List<ReportItem>();
+            if (_formDataViews.Count <= 0)
+            {
+                report.AddRange(CollectDataViewInfo(methodName));
+            }
+
+            report.AddRange(conditionList
                 .Select(condition => new { condition, result = IsExpressionValid(condition.PatchedValue, out _, true) })
                 .Where(n => n.result != ExpressionErrorCode.NoProblem)
                 .Select(n => new ReportItem
@@ -3985,18 +4464,19 @@ namespace KineticValidator
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Error.ToString(),
                     Source = methodName
-                })
-                .ToArray();
+                }));
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> ProviderModelMixedWithClientFilter(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var layoutIdList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -4028,52 +4508,18 @@ namespace KineticValidator
                 })
                 .ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
-            return report;
-        }
-
-        private static IEnumerable<ReportItem> DottedPropertyNames(string methodName)
-        {
-            var startTime = DateTime.Now;
-
-            List<string[]> dvFields = new List<string[]>();
-
-            var ruleDataViewList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && !n.Shared
-                    && n.Name.Contains('.')
-                    )
-                .ToArray();
-
-            var report = ruleDataViewList
-                .Select(n => new ReportItem
-                {
-                    ProjectName = _projectName,
-                    FullFileName = n.FullFileName,
-                    Message =
-                        $"Property name should not contain \'.\' char",
-                    FileType = n.FileType.ToString(),
-                    LineId = n.LineId.ToString(),
-                    JsonPath = n.JsonPath,
-                    LineNumber = n.SourceLineNumber.ToString(),
-                    ValidationType = ValidationTypeEnum.Scheme.ToString(),
-                    Severity = ImportanceEnum.Warning.ToString(),
-                    Source = methodName
-                })
-                .ToArray();
-
-            Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         private static IEnumerable<ReportItem> MultipleRowRuleForSameField(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
-            List<string[]> dvFields = new List<string[]>();
+#endif
+            var dvFields = new List<string[]>();
 
             var ruleDataViewList = _jsonPropertiesCollection
                 .Where(n =>
@@ -4085,15 +4531,13 @@ namespace KineticValidator
                     )
                 .ToArray();
 
-
-
             var report = ruleDataViewList
                 .Select(n => new ReportItem
                 {
                     ProjectName = _projectName,
                     FullFileName = n.FullFileName,
                     Message =
-                        $"'providerModel' should not be used along with 'clientFilter'",
+                        "Data field in row-update->value should be enclosed in '{}'",
                     FileType = n.FileType.ToString(),
                     LineId = n.LineId.ToString(),
                     JsonPath = n.JsonPath,
@@ -4104,16 +4548,18 @@ namespace KineticValidator
                 })
                 .ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         // is it really incorrect?
         private static IEnumerable<ReportItem> IncorrectLayoutIds(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var layoutIdList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -4154,16 +4600,18 @@ namespace KineticValidator
                 })
                 .ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         // is it really incorrect?
         private static IEnumerable<ReportItem> IncorrectTabIds(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var tabIdsList = _jsonPropertiesCollection
                 .Where(n =>
                     !n.Shared
@@ -4208,16 +4656,18 @@ namespace KineticValidator
                 })
                 .ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
         // is it really incorrect?
         private static IEnumerable<ReportItem> DuplicateGuiDs(string methodName)
         {
+#if DEBUG
             var startTime = DateTime.Now;
-
+#endif
             var item2 = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -4226,7 +4676,7 @@ namespace KineticValidator
                 .Where(n => n.Count() > 1)
                 .ToArray();
 
-            var guidList = item2 as IGrouping<string, JsonProperty>[] ?? item2.ToArray();
+            var guidList = item2;
 
             if (!guidList.Any())
                 return new List<ReportItem>();
@@ -4245,8 +4695,9 @@ namespace KineticValidator
                 Source = methodName
             }).ToArray();
 
+#if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
-
+#endif
             return report;
         }
 
