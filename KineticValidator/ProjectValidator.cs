@@ -550,30 +550,33 @@ namespace KineticValidator
                 return report;
             }
 
-            lock (LockSchemaGetter)
+            if (!SchemaList.ContainsKey(schemaUrl))
             {
-                if (!SchemaList.ContainsKey(schemaUrl))
+                lock (LockSchemaGetter)
                 {
-                    var schemaData = "";
-                    try
+                    if (!SchemaList.ContainsKey(schemaUrl))
                     {
-                        schemaData = GetSchemaText(schemaUrl);
-                    }
-                    catch (Exception ex)
-                    {
-                        var reportItem = new ReportItem
+                        var schemaData = "";
+                        try
                         {
-                            ProjectName = projectName,
-                            FullFileName = fullFileName,
-                            Message = $"Schema download exception [{schemaUrl}]: {Utilities.ExceptionPrint(ex)}",
-                            ValidationType = ValidationTypeEnum.Scheme.ToString(),
-                            Severity = ImportanceEnum.Error.ToString(),
-                            Source = "ValidateFileSchema"
-                        };
-                        report.Add(reportItem);
-                    }
+                            schemaData = GetSchemaText(schemaUrl);
+                        }
+                        catch (Exception ex)
+                        {
+                            var reportItem = new ReportItem
+                            {
+                                ProjectName = projectName,
+                                FullFileName = fullFileName,
+                                Message = $"Schema download exception [{schemaUrl}]: {Utilities.ExceptionPrint(ex)}",
+                                ValidationType = ValidationTypeEnum.Scheme.ToString(),
+                                Severity = ImportanceEnum.Error.ToString(),
+                                Source = "ValidateFileSchema"
+                            };
+                            report.Add(reportItem);
+                        }
 
-                    SchemaList.TryAdd(schemaUrl, schemaData);
+                        SchemaList.TryAdd(schemaUrl, schemaData);
+                    }
                 }
             }
 
@@ -882,38 +885,45 @@ namespace KineticValidator
             public string[] Parameters;
         }
 
+        private static readonly object LockServiceLoader = new object();
         private static bool LoadService(string svcName, string assemblyPath)
         {
             if (KnownServices.ContainsKey(svcName) || KnownDataSets.ContainsKey(svcName))
                 return true;
 
-            var domain = AppDomain.CreateDomain(nameof(AssemblyLoader), AppDomain.CurrentDomain.Evidence,
+            lock (LockDataViewCollectionGetter)
+            {
+                if (KnownServices.ContainsKey(svcName) || KnownDataSets.ContainsKey(svcName))
+                    return true;
+
+                var domain = AppDomain.CreateDomain(nameof(AssemblyLoader), AppDomain.CurrentDomain.Evidence,
                 new AppDomainSetup
                 {
                     ApplicationBase = Path.GetDirectoryName(typeof(AssemblyLoader).Assembly.Location)
                 });
-            try
-            {
-                var loader =
-                    (AssemblyLoader)domain.CreateInstanceAndUnwrap(typeof(AssemblyLoader).Assembly.FullName,
-                        typeof(AssemblyLoader).FullName ?? string.Empty);
+                try
+                {
+                    var loader =
+                        (AssemblyLoader)domain.CreateInstanceAndUnwrap(typeof(AssemblyLoader).Assembly.FullName,
+                            typeof(AssemblyLoader).FullName ?? string.Empty);
 
-                var assemblyLoadResult = loader.LoadAssembly(svcName, assemblyPath);
+                    var assemblyLoadResult = loader.LoadAssembly(svcName, assemblyPath);
 
-                if (!assemblyLoadResult)
+                    if (!assemblyLoadResult)
+                        return false;
+
+                    KnownServices.TryAdd(svcName, loader.AllMethodsInfo);
+                    KnownDataSets.TryAdd(svcName, loader.AllDataSetsInfo);
+                }
+                catch (Exception ex)
+                {
+                    Utilities.SaveDevLog(ex.Message);
                     return false;
-
-                KnownServices.TryAdd(svcName, loader.AllMethodsInfo);
-                KnownDataSets.TryAdd(svcName, loader.AllDataSetsInfo);
-            }
-            catch (Exception ex)
-            {
-                Utilities.SaveDevLog(ex.Message);
-                return false;
-            }
-            finally
-            {
-                AppDomain.Unload(domain);
+                }
+                finally
+                {
+                    AppDomain.Unload(domain);
+                }
             }
 
             return true;
@@ -1051,6 +1061,9 @@ namespace KineticValidator
         private static IEnumerable<ReportItem> CollectDataViewInfo(string methodName)
         {
             var report = new List<ReportItem>();
+
+            if (_formDataViews.Count > 0)
+                return report;
 
             lock (LockDataViewCollectionGetter)
             {
