@@ -114,8 +114,8 @@ namespace KineticValidator
         private static ConcurrentDictionary<string, string> SchemaList =
             new ConcurrentDictionary<string, string>(); // schema URL / schema text
 
-        private static ConcurrentDictionary<string, Dictionary<string, string[]>> KnownServices =
-            new ConcurrentDictionary<string, Dictionary<string, string[]>>(); // svcName / [methodName, parameters]
+        private static Dictionary<string, Dictionary<string, string[]>> KnownServices =
+            new Dictionary<string, Dictionary<string, string[]>>(); // svcName / [methodName, parameters]
 
         private class KineticDataView
         {
@@ -147,9 +147,9 @@ namespace KineticValidator
         private static List<KineticDataView>
             _formDataViews = new List<KineticDataView>();
 
-        private static ConcurrentDictionary<string, Dictionary<string, Dictionary<string, string[]>>>
+        private static Dictionary<string, Dictionary<string, Dictionary<string, string[]>>>
             KnownDataSets =
-                new ConcurrentDictionary<string, Dictionary<string, Dictionary<string, string[]>>>(); // svcName / [dataSet, [datatables, fields]]
+                new Dictionary<string, Dictionary<string, Dictionary<string, string[]>>>(); // svcName / [dataSet, [datatables, fields]]
 
         internal static void Initialize(ProcessConfiguration processConfiguration,
             ProjectConfiguration projectConfiguration,
@@ -194,8 +194,8 @@ namespace KineticValidator
                 _formDataViews = new List<KineticDataView>();
             }
             //SchemaList = new Dictionary<string, string>();
-            //KnownServices = new ConcurrentDictionary<string, Dictionary<string, string[]>>();
-            //KnownDataSets = new ConcurrentDictionary<string, Dictionary<string, Dictionary<string, string[]>>>();
+            KnownServices = new Dictionary<string, Dictionary<string, string[]>>();
+            KnownDataSets = new Dictionary<string, Dictionary<string, Dictionary<string, string[]>>>();
             _formDataViews = new List<KineticDataView>();
 
             if (_patchAllFields)
@@ -888,12 +888,12 @@ namespace KineticValidator
         private static readonly object LockServiceLoader = new object();
         private static bool LoadService(string svcName, string assemblyPath)
         {
-            if (KnownServices.ContainsKey(svcName) || KnownDataSets.ContainsKey(svcName))
+            if (KnownServices.ContainsKey(svcName) && KnownDataSets.ContainsKey(svcName))
                 return true;
 
             lock (LockDataViewCollectionGetter)
             {
-                if (KnownServices.ContainsKey(svcName) || KnownDataSets.ContainsKey(svcName))
+                if (KnownServices.ContainsKey(svcName) && KnownDataSets.ContainsKey(svcName))
                     return true;
 
                 var domain = AppDomain.CreateDomain(nameof(AssemblyLoader), AppDomain.CurrentDomain.Evidence,
@@ -912,8 +912,8 @@ namespace KineticValidator
                     if (!assemblyLoadResult)
                         return false;
 
-                    KnownServices.TryAdd(svcName, loader.AllMethodsInfo);
-                    KnownDataSets.TryAdd(svcName, loader.AllDataSetsInfo);
+                    KnownServices.Add(svcName, loader.AllMethodsInfo);
+                    KnownDataSets.Add(svcName, loader.AllDataSetsInfo);
                 }
                 catch (Exception ex)
                 {
@@ -962,7 +962,7 @@ namespace KineticValidator
                         return result;
 
                     result.SvcName = svcName;
-                    KnownServices.TryAdd(svcName, loader.AllMethodsInfo);
+                    KnownServices.Add(svcName, loader.AllMethodsInfo);
                     if (loader.AllMethodsInfo != null && loader.AllMethodsInfo.ContainsKey(methodName))
                     {
                         result.MethodName = methodName;
@@ -1033,7 +1033,7 @@ namespace KineticValidator
                         return result;
 
                     result.SvcName = svcName;
-                    KnownDataSets.TryAdd(svcName, loader.AllDataSetsInfo);
+                    KnownDataSets.Add(svcName, loader.AllDataSetsInfo);
                     if (loader.AllDataSetsInfo != null && loader.AllDataSetsInfo.ContainsKey(dataSetName))
                     {
                         result.DataSetName = dataSetName;
