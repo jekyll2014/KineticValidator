@@ -1524,6 +1524,7 @@ namespace KineticValidator
             MissingOperator,
             InconsistentBrackets,
             InconsistentValueFields,
+            IncorrectTypeComparison,
             FieldNotExists,
             DataViewNotExists,
             KeyWordNotExists,
@@ -1574,7 +1575,7 @@ namespace KineticValidator
 
             expression = expression.Trim();
 
-            var operators = new[] { "===", "!==", "==", "!=", "&&", "||", "<=", ">=", "<", ">", "!", "=" };
+            var operators = new[] { "===", "!==", "==", "!=", "&&", "||", "<=", ">=", "<", ">", "!" };
             var postProcessOperators = new[] { "and", "not", "or" };
             var javaStyleOnly = new[] { "===", "!==", "==", "!=", "&&", "||", "!" };
             var sqlStyleOnly = new[] { "<>", "and", "not", "or" };
@@ -1916,18 +1917,20 @@ namespace KineticValidator
             // both fields around the operator should be of same type (string/non-string)
             if (!sqlType)
             {
+                var stringOperators = new[] { "===", "!==", "==", "!=", "<=", ">=", "<", ">", };
+
                 for (var i = 1; i < tokens.Count - 1; i++)
                 {
                     var currentT = tokens[i];
                     var previousT = tokens[i - 1];
                     var nextT = tokens[i + 1];
-                    if (currentT.Type == TokenType.Operator && currentT.Value != "&&" && currentT.Value != "||"
+                    if (currentT.Type == TokenType.Operator && stringOperators.Contains(currentT.Value)
                         && (previousT.Type == TokenType.TextField || previousT.Type == TokenType.ValueField)
                         && (nextT.Type == TokenType.TextField || nextT.Type == TokenType.ValueField))
                     {
                         if (previousT.Type != nextT.Type)
                         {
-                            currentT.ErrorCode = ExpressionErrorCode.InconsistentValueFields;
+                            currentT.ErrorCode = ExpressionErrorCode.IncorrectTypeComparison;
                             report.Add(currentT);
                         }
                     }
@@ -2008,7 +2011,7 @@ namespace KineticValidator
                             report.Add(token);
                         }
 
-                        if (!DataViewExists(dv[0]))
+                        if (!DataViewExists(sqlToken))
                         {
                             token.ErrorCode = ExpressionErrorCode.DataViewNotExists;
                             report.Add(token);
@@ -2035,6 +2038,28 @@ namespace KineticValidator
                     else if (!string.IsNullOrEmpty(dataView))
                     {
                         if (!DataFieldExists(dataView + "." + sqlToken))
+                        {
+                            token.ErrorCode = ExpressionErrorCode.FieldNotExists;
+                            report.Add(token);
+                        }
+                    }
+                }
+            }
+
+            // check field calls inside quotes of they are like '{dataVie.field}'
+            if (!sqlType)
+            {
+                foreach (var token in tokens.Where(n => n.Type == TokenType.TextField && n.Value.Contains('.')))
+                {
+                    var value = token.Value.Trim('\'');
+                    if (value.StartsWith("{") && value.EndsWith("}"))
+                    {
+                        if (!DataViewExists(value))
+                        {
+                            token.ErrorCode = ExpressionErrorCode.DataViewNotExists;
+                            report.Add(token);
+                        }
+                        if (!DataFieldExists(value))
                         {
                             token.ErrorCode = ExpressionErrorCode.FieldNotExists;
                             report.Add(token);
@@ -2103,7 +2128,7 @@ namespace KineticValidator
                 {
                     ProjectName = _projectName,
                     FullFileName = file,
-                    Message = "File is not used in the project",
+                    Message = "File is not used",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Note.ToString(),
                     Source = methodName
@@ -2350,7 +2375,7 @@ namespace KineticValidator
                     LineId = patchResource.LineId.ToString(),
                     JsonPath = patchResource.JsonPath,
                     LineNumber = patchResource.SourceLineNumber.ToString(),
-                    Message = $"Patch \"{patchResource.Value}\" is not used in the project",
+                    Message = $"Patch \"{patchResource.Value}\" is not used",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Warning.ToString(),
                     Source = methodName
@@ -2392,7 +2417,7 @@ namespace KineticValidator
                     LineId = n.k.property.LineId.ToString(),
                     JsonPath = n.k.property.JsonPath,
                     LineNumber = n.k.property.SourceLineNumber.ToString(),
-                    Message = $"Patch \"{n.patchItem}\" is not defined in the project",
+                    Message = $"Patch \"{n.patchItem}\" is not defined",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Error.ToString(),
                     Source = methodName
@@ -2735,7 +2760,7 @@ namespace KineticValidator
                     LineId = stringResource.LineId.ToString(),
                     JsonPath = stringResource.JsonPath,
                     LineNumber = stringResource.SourceLineNumber.ToString(),
-                    Message = $"String \"{stringResource.Name}\" is not used in the project",
+                    Message = $"String \"{stringResource.Name}\" is not used",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Warning.ToString(),
                     Source = methodName
@@ -2785,7 +2810,7 @@ namespace KineticValidator
                     LineId = n.k.field.LineId.ToString(),
                     JsonPath = n.k.field.JsonPath,
                     LineNumber = n.k.field.SourceLineNumber.ToString(),
-                    Message = $"String \"{n.str}\" is not defined in the project",
+                    Message = $"String \"{n.str}\" is not defined",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Error.ToString(),
                     Source = methodName
@@ -3137,7 +3162,7 @@ namespace KineticValidator
                     LineId = eventItem.LineId.ToString(),
                     JsonPath = eventItem.JsonPath,
                     LineNumber = eventItem.SourceLineNumber.ToString(),
-                    Message = $"Event id \"{eventItem.PatchedValue}\" is not used in the project",
+                    Message = $"Event id \"{eventItem.PatchedValue}\" is not used",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Warning.ToString(),
                     Source = methodName
@@ -3202,7 +3227,7 @@ namespace KineticValidator
                     LineId = eventId.LineId.ToString(),
                     JsonPath = eventId.JsonPath,
                     LineNumber = eventId.SourceLineNumber.ToString(),
-                    Message = $"Event id \"{eventId.PatchedValue}\" is not defined in the project",
+                    Message = $"Event id \"{eventId.PatchedValue}\" is not defined",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Error.ToString(),
                     Source = methodName
@@ -3267,7 +3292,7 @@ namespace KineticValidator
                     LineId = viewResource.LineId.ToString(),
                     JsonPath = viewResource.JsonPath,
                     LineNumber = viewResource.SourceLineNumber.ToString(),
-                    Message = $"DataView \"{viewResource.PatchedValue}\" is not used in the project",
+                    Message = $"DataView \"{viewResource.PatchedValue}\" is not used",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Warning.ToString(),
                     Source = methodName
@@ -3381,7 +3406,7 @@ namespace KineticValidator
                         LineId = property.LineId.ToString(),
                         JsonPath = property.JsonPath,
                         LineNumber = property.SourceLineNumber.ToString(),
-                        Message = $"DataView \"{viewName}\" is not defined in the project",
+                        Message = $"DataView \"{viewName}\" is not defined",
                         ValidationType = ValidationTypeEnum.Logic.ToString(),
                         Severity = ImportanceEnum.Error.ToString(),
                         Source = methodName
@@ -3537,7 +3562,7 @@ namespace KineticValidator
                     LineId = property.LineId.ToString(),
                     JsonPath = property.JsonPath,
                     LineNumber = property.SourceLineNumber.ToString(),
-                    Message = $"DataTable \"{usedDataTable}\" is not defined in the project",
+                    Message = $"DataTable \"{usedDataTable}\" is not defined",
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Error.ToString(),
                     Source = methodName
@@ -4367,10 +4392,7 @@ namespace KineticValidator
 #endif
             var report = new List<ReportItem>();
 
-            if (_formDataViews.Count <= 0)
-            {
-                report.AddRange(CollectDataViewInfo(methodName));
-            }
+            report.AddRange(CollectDataViewInfo(methodName));
 
             var localDataViews = _formDataViews?.Where(n => n.IsLocal).Select(n => n.DataViewName).ToArray();
 
@@ -4464,10 +4486,7 @@ namespace KineticValidator
 #endif
             var report = new List<ReportItem>();
 
-            if (_formDataViews.Count <= 0)
-            {
-                report.AddRange(CollectDataViewInfo(methodName));
-            }
+            report.AddRange(CollectDataViewInfo(methodName));
 
             var dvFields = new List<string[]>();
 
@@ -4591,10 +4610,7 @@ namespace KineticValidator
                 .ToArray();
 
             var report = new List<ReportItem>();
-            if (_formDataViews.Count <= 0)
-            {
-                report.AddRange(CollectDataViewInfo(methodName));
-            }
+            report.AddRange(CollectDataViewInfo(methodName));
 
             var reportItems = expressionList
                 .Select(expression => new { expression, result = IsExpressionValid(expression.PatchedValue) })
@@ -4649,10 +4665,7 @@ namespace KineticValidator
                 .ToArray();
 
             var report = new List<ReportItem>();
-            if (_formDataViews.Count <= 0)
-            {
-                report.AddRange(CollectDataViewInfo(methodName));
-            }
+            report.AddRange(CollectDataViewInfo(methodName));
 
             foreach (var condition in conditionList)
             {
