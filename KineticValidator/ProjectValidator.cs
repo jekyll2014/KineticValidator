@@ -191,11 +191,10 @@ namespace KineticValidator
             if (clearCache)
             {
                 _parsedFiles = new ConcurrentDictionary<string, List<ParsedProperty>>();
-                _formDataViews = new List<KineticDataView>();
             }
             //SchemaList = new Dictionary<string, string>();
-            KnownServices = new Dictionary<string, Dictionary<string, string[]>>();
-            KnownDataSets = new Dictionary<string, Dictionary<string, Dictionary<string, string[]>>>();
+            //KnownServices = new Dictionary<string, Dictionary<string, string[]>>();
+            //KnownDataSets = new Dictionary<string, Dictionary<string, Dictionary<string, string[]>>>();
             _formDataViews = new List<KineticDataView>();
 
             if (_patchAllFields)
@@ -272,7 +271,6 @@ namespace KineticValidator
                             if (s[i - 1].Number + 1 == s[i].Number && s[i - 1].Bracket == startChar &&
                                 s[i].Bracket == endChar)
                             {
-                                var str = "";
                                 var startPos = s[i - 1].Pos + 1;
                                 var endPos = s[i].Pos - s[i - 1].Pos - 1;
                                 if (noBracketTrim)
@@ -283,7 +281,7 @@ namespace KineticValidator
                                         endPos += 2;
                                 }
 
-                                str = token.Substring(startPos, endPos);
+                                var str = token.Substring(startPos, endPos);
 
                                 if (str.Contains('.'))
                                     valueList.Add(str);
@@ -421,9 +419,7 @@ namespace KineticValidator
             if (_systemDataViews.Contains(tokens[0], StringComparer.InvariantCultureIgnoreCase))
                 return true;
 
-            var result = true;
-
-            result = dv.Fields.Contains(tokens[1]);
+            var result = dv.Fields.Contains(tokens[1]);
             if (!result)
             {
                 result = dv.AdditionalFields.Contains(tokens[1]);
@@ -878,6 +874,65 @@ namespace KineticValidator
 #endif
         }
 
+        private static Dictionary<string, string> CollectPatchValues()
+        {
+            var patchList = _jsonPropertiesCollection
+                .Where(n =>
+                    n.ItemType == JsonItemType.Property
+                    && n.FileType == KineticContentType.Patch
+                    && n.Parent == "patch"
+                    && n.Name == "id");
+
+            var patchValues = new Dictionary<string, string>();
+            foreach (var item in patchList)
+            {
+                var newValue = _jsonPropertiesCollection
+                    .LastOrDefault(n =>
+                        n.ItemType == JsonItemType.Property
+                        && n.FileType == KineticContentType.Patch
+                        && n.FullFileName == item.FullFileName
+                        && n.ParentPath == item.ParentPath
+                        && n.Name == "value")
+                    ?.Value;
+
+                var patchName = "%" + item.Value + "%";
+                if (!patchValues.ContainsKey(patchName))
+                    patchValues.Add(patchName, newValue);
+                else
+                    patchValues[patchName] = newValue;
+            }
+
+            var allReplaced = false;
+            do
+            {
+                allReplaced = true;
+
+                var toPatch = patchValues.Where(n =>
+                    n.Value.Trim().StartsWith("%")
+                    && n.Value.Trim().EndsWith("%")).ToArray();
+
+
+                if (toPatch.Any())
+                {
+                    var replaceValues = new Dictionary<string, string>();
+                    foreach (var item in toPatch)
+                    {
+                        foreach (var patch in patchValues.Where(patch => patch.Key == item.Value))
+                        {
+                            replaceValues.Add(item.Key, patch.Value);
+                            allReplaced = false;
+                            break;
+                        }
+                    }
+
+                    foreach (var r in replaceValues)
+                        patchValues[r.Key] = r.Value;
+                }
+            } while (!allReplaced);
+
+            return patchValues;
+        }
+
         private struct RestMethodInfo
         {
             public string SvcName;
@@ -891,7 +946,7 @@ namespace KineticValidator
             if (KnownServices.ContainsKey(svcName) && KnownDataSets.ContainsKey(svcName))
                 return true;
 
-            lock (LockDataViewCollectionGetter)
+            lock (LockServiceLoader)
             {
                 if (KnownServices.ContainsKey(svcName) && KnownDataSets.ContainsKey(svcName))
                     return true;
@@ -984,9 +1039,6 @@ namespace KineticValidator
 
         private struct RestDataTableInfo
         {
-            public string KineticViewName;
-            public string KineticDataSetName;
-            public string KineticDataTableName;
             public string SvcName;
             public string DataSetName;
             public string TableName;
@@ -1191,7 +1243,7 @@ namespace KineticValidator
                         && !string.IsNullOrEmpty(srvDataSetName)
                         && !string.IsNullOrEmpty(srvTableName))
                     {
-                        var svcName = KnownDataSets.FirstOrDefault(n => n.Value.ContainsKey(srvDataSetName)).Key;
+                        var svcName = KnownDataSets?.FirstOrDefault(n => n.Value.ContainsKey(srvDataSetName)).Key;
 
                         var newView = new KineticDataView
                         {
@@ -1264,7 +1316,7 @@ namespace KineticValidator
                         else
                         {
                             if (serverTable.Value.Value != null)
-                                newView.Fields.AddRange(serverTable?.Value);
+                                newView.Fields.AddRange(serverTable.Value.Value);
                         }
 
                         var oldDv = _formDataViews.LastOrDefault(n => n.DataViewName == newView.DataViewName);
@@ -1455,64 +1507,6 @@ namespace KineticValidator
             return report;
         }
 
-        private static Dictionary<string, string> CollectPatchValues()
-        {
-            var patchList = _jsonPropertiesCollection
-                .Where(n =>
-                    n.ItemType == JsonItemType.Property
-                    && n.FileType == KineticContentType.Patch
-                    && n.Parent == "patch"
-                    && n.Name == "id");
-
-            var patchValues = new Dictionary<string, string>();
-            foreach (var item in patchList)
-            {
-                var newValue = _jsonPropertiesCollection
-                    .LastOrDefault(n =>
-                        n.ItemType == JsonItemType.Property
-                        && n.FileType == KineticContentType.Patch
-                        && n.FullFileName == item.FullFileName
-                        && n.ParentPath == item.ParentPath
-                        && n.Name == "value")
-                    ?.Value;
-
-                var patchName = "%" + item.Value + "%";
-                if (!patchValues.ContainsKey(patchName))
-                    patchValues.Add(patchName, newValue);
-                else
-                    patchValues[patchName] = newValue;
-            }
-
-            var allReplaced = false;
-            do
-            {
-                var toPatch = patchValues.Where(n =>
-                    n.Value.Trim().StartsWith("%")
-                    && n.Value.Trim().EndsWith("%")).ToArray();
-
-                allReplaced = true;
-
-                if (toPatch.Any())
-                {
-                    var replaceValues = new Dictionary<string, string>();
-                    foreach (var item in toPatch)
-                    {
-                        foreach (var patch in patchValues.Where(patch => patch.Key == item.Value))
-                        {
-                            replaceValues.Add(item.Key, patch.Value);
-                            allReplaced = false;
-                            break;
-                        }
-                    }
-
-                    foreach (var r in replaceValues)
-                        patchValues[r.Key] = r.Value;
-                }
-            } while (!allReplaced);
-
-            return patchValues;
-        }
-
         private enum ExpressionErrorCode
         {
             NoProblem,
@@ -1523,7 +1517,6 @@ namespace KineticValidator
             OddFieldEmbracement,
             MissingOperator,
             InconsistentBrackets,
-            InconsistentValueFields,
             IncorrectTypeComparison,
             FieldNotExists,
             DataViewNotExists,
@@ -1588,6 +1581,7 @@ namespace KineticValidator
                 Value = "",
                 Type = TokenType.ValueField
             };
+            var currentTokenValue = new StringBuilder();
             char currentChar;
             var txtFlag = false;
             var jsFlag = false;
@@ -1598,9 +1592,13 @@ namespace KineticValidator
                 // skip spaces except inside text fields
                 if (!txtFlag && !jsFlag && currentChar == ' ')
                 {
-                    if (!string.IsNullOrEmpty(currentToken.Value))
+                    if (currentTokenValue.Length > 0)
+                    {
+                        currentToken.Value = currentTokenValue.ToString();
                         tokens.Add(currentToken);
+                    }
 
+                    currentTokenValue.Clear();
                     currentToken = new ExpressionToken
                     {
                         Value = "",
@@ -1614,15 +1612,19 @@ namespace KineticValidator
                 {
                     txtFlag = true;
 
-                    if (!string.IsNullOrEmpty(currentToken.Value))
+                    if (currentTokenValue.Length > 0)
+                    {
+                        currentToken.Value = currentTokenValue.ToString();
                         tokens.Add(currentToken);
+                    }
 
+                    currentTokenValue.Clear();
                     currentToken = new ExpressionToken
                     {
-                        Value = currentChar.ToString(),
+                        Value = "",
                         Type = TokenType.TextField
                     };
-
+                    currentTokenValue.Append(currentChar);
                     continue;
                 }
 
@@ -1632,10 +1634,12 @@ namespace KineticValidator
                     // end of text field
                     if (currentChar == '\'')
                     {
-                        currentToken.Value += currentChar;
+                        currentTokenValue.Append(currentChar);
+                        currentToken.Value = currentTokenValue.ToString();
                         tokens.Add(currentToken);
                         txtFlag = false;
 
+                        currentTokenValue.Clear();
                         currentToken = new ExpressionToken
                         {
                             Value = "",
@@ -1644,7 +1648,7 @@ namespace KineticValidator
                     }
                     else
                     {
-                        currentToken.Value += currentChar;
+                        currentTokenValue.Append(currentChar);
                     }
 
                     continue;
@@ -1655,14 +1659,19 @@ namespace KineticValidator
                 {
                     jsFlag = true;
 
-                    if (!string.IsNullOrEmpty(currentToken.Value))
+                    if (currentTokenValue.Length > 0)
+                    {
+                        currentToken.Value = currentTokenValue.ToString();
                         tokens.Add(currentToken);
+                    }
 
+                    currentTokenValue.Clear();
                     currentToken = new ExpressionToken
                     {
-                        Value = "#_",
+                        Value = "",
                         Type = TokenType.TextField
                     };
+                    currentTokenValue.Append("#_");
 
                     pos++;
 
@@ -1675,11 +1684,13 @@ namespace KineticValidator
                     // end of javascript insert
                     if (currentChar == '_' && pos + 1 < expression.Length && expression[pos + 1] == '#')
                     {
-                        currentToken.Value += "_#";
+                        currentTokenValue.Append("_#");
                         pos++;
+                        currentToken.Value = currentTokenValue.ToString();
                         tokens.Add(currentToken);
                         jsFlag = false;
 
+                        currentTokenValue.Clear();
                         currentToken = new ExpressionToken
                         {
                             Value = "",
@@ -1688,7 +1699,7 @@ namespace KineticValidator
                     }
                     else
                     {
-                        currentToken.Value += currentChar;
+                        currentTokenValue.Append(currentChar);
                     }
 
                     continue;
@@ -1697,9 +1708,13 @@ namespace KineticValidator
                 // bracket opening
                 if (currentChar == '(')
                 {
-                    if (!string.IsNullOrEmpty(currentToken.Value))
+                    if (currentTokenValue.Length > 0)
+                    {
+                        currentToken.Value = currentTokenValue.ToString();
                         tokens.Add(currentToken);
+                    }
 
+                    currentTokenValue.Clear();
                     currentToken = new ExpressionToken
                     {
                         Value = currentChar.ToString(),
@@ -1719,15 +1734,20 @@ namespace KineticValidator
                 // bracket closing
                 if (currentChar == ')')
                 {
-                    if (!string.IsNullOrEmpty(currentToken.Value))
+                    if (currentTokenValue.Length > 0)
+                    {
+                        currentToken.Value = currentTokenValue.ToString();
                         tokens.Add(currentToken);
+                    }
 
+                    currentTokenValue.Clear();
                     currentToken = new ExpressionToken
                     {
                         Value = currentChar.ToString(),
                         Type = TokenType.BracketClose
                     };
                     tokens.Add(currentToken);
+
                     currentToken = new ExpressionToken
                     {
                         Value = "",
@@ -1740,33 +1760,43 @@ namespace KineticValidator
                 // operator
                 if (operators.Any(n => n[0] == currentChar))
                 {
-                    if (!string.IsNullOrEmpty(currentToken.Value))
+                    if (currentTokenValue.Length > 0)
+                    {
+                        currentToken.Value = currentTokenValue.ToString();
                         tokens.Add(currentToken);
+                    }
 
+                    currentTokenValue.Clear();
                     currentToken = new ExpressionToken
                     {
+                        Value = "",
                         Type = TokenType.Operator
                     };
 
                     foreach (var operatorStr in operators)
+                    {
                         if (pos + operatorStr.Length <= expression.Length)
                         {
                             var newValue = expression.Substring(pos, operatorStr.Length);
                             if (operatorStr == newValue)
                             {
-                                currentToken.Value = newValue;
+                                currentTokenValue.Append(newValue);
                                 pos += operatorStr.Length - 1;
                                 break;
                             }
                         }
+                    }
 
-                    if (string.IsNullOrEmpty(currentToken.Value))
+                    if (currentTokenValue.Length <= 0)
                     {
                         currentToken.ErrorCode = ExpressionErrorCode.IncorrectOperator;
                         report.Add(currentToken);
                     }
 
+                    currentToken.Value = currentTokenValue.ToString();
                     tokens.Add(currentToken);
+
+                    currentTokenValue.Clear();
                     currentToken = new ExpressionToken
                     {
                         Value = "",
@@ -1777,11 +1807,14 @@ namespace KineticValidator
                 }
 
                 // field name
-                currentToken.Value += currentChar;
+                currentTokenValue.Append(currentChar);
             }
 
-            if (!string.IsNullOrEmpty(currentToken.Value))
+            if (currentTokenValue.Length > 0)
+            {
+                currentToken.Value = currentTokenValue.ToString();
                 tokens.Add(currentToken);
+            }
 
             // mark all SQL operators 
             if (sqlType)
@@ -2277,8 +2310,6 @@ namespace KineticValidator
 #if DEBUG
             var startTime = DateTime.Now;
 #endif
-            var dvFields = new List<string[]>();
-
             var ruleDataViewList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
@@ -3270,8 +3301,6 @@ namespace KineticValidator
 
             dataViewList.AddRange(conditionDataViewList);
 
-            var sysDataViews = new[] { "DynTableAttributes", "DynFieldAttributes", "DynFieldHelp" };
-
             var report = dataViewList
                 .Where(viewResource => !_jsonPropertiesCollection
                     .Any(n =>
@@ -3510,7 +3539,7 @@ namespace KineticValidator
                     && n.Parent == "dataviews"
                     && n.Name == "table"
                     && !string.IsNullOrEmpty(n.PatchedValue)
-                    && n.PatchedValue.IndexOfAny(new char[] { '{', '}', '%' }) <= 0)
+                    && n.PatchedValue.IndexOfAny(new[] { '{', '}', '%' }) <= 0)
                 .Select(n => n.PatchedValue)
                 .Distinct()
                 .ToArray();
@@ -3548,7 +3577,7 @@ namespace KineticValidator
                 }
 
                 if (string.IsNullOrEmpty(usedDataTable)
-                    || usedDataTable.IndexOfAny(new char[] { '{', '}', '%' }) >= 0
+                    || usedDataTable.IndexOfAny(new[] { '{', '}', '%' }) >= 0
                     || dataTableList.Contains(usedDataTable))
                 {
                     continue;
@@ -4394,7 +4423,7 @@ namespace KineticValidator
 
             report.AddRange(CollectDataViewInfo(methodName));
 
-            var localDataViews = _formDataViews?.Where(n => n.IsLocal).Select(n => n.DataViewName).ToArray();
+            var localDataViews = _formDataViews.Where(n => n.IsLocal).Select(n => n.DataViewName).ToArray();
 
             //check every value field for a {dataView.field} pattern and check it certain combination exists
             foreach (var item in _jsonPropertiesCollection.Where(n =>
@@ -4434,7 +4463,7 @@ namespace KineticValidator
                 foreach (var tokens in fields.Select(field => field.Split('.')))
                 {
                     var dvName = _formDataViews?.Where(n => n.DataViewName == tokens[0]).ToArray();
-                    if (dvName == null || !dvName.Any())
+                    if (!dvName.Any())
                     {
                         var newReport = new ReportItem
                         {
@@ -4487,8 +4516,6 @@ namespace KineticValidator
             var report = new List<ReportItem>();
 
             report.AddRange(CollectDataViewInfo(methodName));
-
-            var dvFields = new List<string[]>();
 
             var rowUpdateList = _jsonPropertiesCollection
                 .Where(n =>
@@ -4675,10 +4702,11 @@ namespace KineticValidator
                     !n.Shared
                     && n.FullFileName == condition.FullFileName
                     && n.FileType == KineticContentType.Rules
-                    && n.JsonPath == condition.ParentPath + ".dataView").PatchedValue;
+                    && n.JsonPath == condition.ParentPath + ".dataView")?
+                .PatchedValue ?? "";
 
-                var r = IsExpressionValid(condition.PatchedValue, true, dvName);
-                if (r.Count() > 0)
+                var r = IsExpressionValid(condition.PatchedValue, true, dvName).ToArray();
+                if (r.Any())
                 {
                     var errorList = new StringBuilder();
                     foreach (var item in r)
@@ -4756,8 +4784,6 @@ namespace KineticValidator
 #if DEBUG
             var startTime = DateTime.Now;
 #endif
-            var dvFields = new List<string[]>();
-
             var ruleDataViewList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
