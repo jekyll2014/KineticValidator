@@ -1143,6 +1143,7 @@ namespace KineticValidator
                     var kineticTableName = _jsonPropertiesCollection
                         .FirstOrDefault(n =>
                             n.ItemType == JsonItemType.Property
+                            && n.FileType == KineticContentType.DataViews
                             && n.FullFileName == originalDataViewName.FullFileName
                             && n.JsonPath == originalDataViewName.JsonPath.Replace(".id", ".table")
                             && !string.IsNullOrEmpty(n.PatchedValue))?
@@ -1151,6 +1152,7 @@ namespace KineticValidator
                     var kineticDataSetName = _jsonPropertiesCollection
                         .FirstOrDefault(n =>
                             n.ItemType == JsonItemType.Property
+                            && n.FileType == KineticContentType.DataViews
                             && n.FullFileName == originalDataViewName.FullFileName
                             && n.JsonPath == originalDataViewName.JsonPath.Replace(".id", ".datasetId")
                             && !string.IsNullOrEmpty(n.PatchedValue))?
@@ -1159,6 +1161,7 @@ namespace KineticValidator
                     var srvDataSetName = _jsonPropertiesCollection
                         .FirstOrDefault(n =>
                             n.ItemType == JsonItemType.Property
+                            && n.FileType == KineticContentType.DataViews
                             && n.FullFileName == originalDataViewName.FullFileName
                             && n.JsonPath == originalDataViewName.JsonPath.Replace(".id", ".serverDataset")
                             && !string.IsNullOrEmpty(n.PatchedValue))?
@@ -1167,6 +1170,7 @@ namespace KineticValidator
                     var srvTableName = _jsonPropertiesCollection
                         .FirstOrDefault(n =>
                             n.ItemType == JsonItemType.Property
+                            && n.FileType == KineticContentType.DataViews
                             && n.FullFileName == originalDataViewName.FullFileName
                             && n.JsonPath == originalDataViewName.JsonPath.Replace(".id", ".serverTable")
                             && !string.IsNullOrEmpty(n.PatchedValue))?
@@ -1175,6 +1179,7 @@ namespace KineticValidator
                     var additionalColumnsList = _jsonPropertiesCollection
                         .Where(n =>
                             n.ItemType == JsonItemType.Property
+                            && n.FileType == KineticContentType.DataViews
                             && n.FullFileName == originalDataViewName.FullFileName
                             && n.JsonPath == originalDataViewName.JsonPath.Replace(".id", ".additionalColumns")
                             && !string.IsNullOrEmpty(n.PatchedValue))?
@@ -1280,25 +1285,6 @@ namespace KineticValidator
                             oldDv.IsLocal = newView.IsLocal;
                             oldDv.IsDataViewCondition = newView.IsDataViewCondition;
                         }
-                        /*else
-                        {
-                            var newReport = new ReportItem
-                            {
-                                ProjectName = _projectName,
-                                FullFileName = kineticDataView.FullFileName,
-                                Message =
-                                    $"Dataview \"{newView.DataViewName}\" is overriding \"{oldDv.DataViewName}\"",
-                                FileType = kineticDataView.FileType.ToString(),
-                                LineId = kineticDataView.LineId.ToString(),
-                                JsonPath = kineticDataView.JsonPath,
-                                LineNumber = kineticDataView.SourceLineNumber.ToString(),
-                                ValidationType = ValidationTypeEnum.Logic.ToString(),
-                                Severity = ImportanceEnum.Error.ToString(),
-                                Source = methodName
-                            };
-
-                            report.Add(newReport);
-                        }*/
                     }
                     // local dataView with no server source
                     else
@@ -1541,6 +1527,7 @@ namespace KineticValidator
             FieldNotExists,
             DataViewNotExists,
             KeyWordNotExists,
+            ContainsJsCode
         }
 
         private enum TokenType
@@ -1556,16 +1543,36 @@ namespace KineticValidator
         {
             public TokenType Type;
             public string Value;
+            public ExpressionErrorCode ErrorCode;
+
+            public string GetErrorsDescription()
+            {
+                return $"{ErrorCode} \"{Value}\"";
+            }
         }
 
-        private static ExpressionErrorCode IsExpressionValid(string expression, bool sqlType = false, string dataView = "")
+        private static IEnumerable<ExpressionToken> IsExpressionValid(string expression, bool sqlType = false, string dataView = "")
         {
             var tokens = new List<ExpressionToken>();
+            var report = new List<ExpressionToken>();
 
-            expression = expression?.Trim();
 
             if (string.IsNullOrEmpty(expression))
-                return ExpressionErrorCode.NoProblem;
+                return report;
+
+            var jsCodeSigns = new[] { "'.", ").", "in (", "in(" };
+            if (jsCodeSigns.Any(n => expression.Contains(n)))
+            {
+                var newReport = new ExpressionToken()
+                {
+                    ErrorCode = ExpressionErrorCode.ContainsJsCode,
+                    Type = TokenType.Operator,
+                    Value = ""
+                };
+                report.Add(newReport);
+            }
+
+            expression = expression.Trim();
 
             var operators = new[] { "===", "!==", "==", "!=", "&&", "||", "<=", ">=", "<", ">", "!", "=" };
             var postProcessOperators = new[] { "and", "not", "or" };
@@ -1753,7 +1760,10 @@ namespace KineticValidator
                         }
 
                     if (string.IsNullOrEmpty(currentToken.Value))
-                        return ExpressionErrorCode.IncorrectOperator;
+                    {
+                        currentToken.ErrorCode = ExpressionErrorCode.IncorrectOperator;
+                        report.Add(currentToken);
+                    }
 
                     tokens.Add(currentToken);
                     currentToken = new ExpressionToken
@@ -1772,10 +1782,18 @@ namespace KineticValidator
             if (!string.IsNullOrEmpty(currentToken.Value))
                 tokens.Add(currentToken);
 
+            // mark all SQL operators 
             if (sqlType)
             {
                 foreach (var t in tokens.Where(t => postProcessOperators.Contains(t.Value.ToLower())))
                     t.Type = TokenType.Operator;
+            }
+
+            // remove ContainsJsCode message if there is "#_ _#" JS code insert
+            var jsErrorToken = report.FirstOrDefault(n => n.ErrorCode == ExpressionErrorCode.ContainsJsCode);
+            if (jsErrorToken != null && tokens.Any(n => n.Type == TokenType.TextField && n.Value.StartsWith("#_")))
+            {
+                report.Remove(jsErrorToken);
             }
 
             // expression can't end with open bracket or operator or opened text/js field
@@ -1783,16 +1801,25 @@ namespace KineticValidator
                 || currentToken.Type == TokenType.Operator
                 || txtFlag
                 || jsFlag)
-                return ExpressionErrorCode.IncompleteExpression;
+            {
+                currentToken.ErrorCode = ExpressionErrorCode.IncompleteExpression;
+                report.Add(currentToken);
+            }
 
             // expression can't start with operator or closing bracket
             if (tokens[0].Type == TokenType.BracketClose
                 || tokens[0].Type == TokenType.Operator)
             {
                 if (!sqlType && tokens[0].Value != "!")
-                    return ExpressionErrorCode.IncompleteExpression;
+                {
+                    tokens[0].ErrorCode = ExpressionErrorCode.IncompleteExpression;
+                    report.Add(tokens[0]);
+                }
                 if (sqlType && tokens[0].Value.ToLower() != "not")
-                    return ExpressionErrorCode.IncompleteExpression;
+                {
+                    tokens[0].ErrorCode = ExpressionErrorCode.IncompleteExpression;
+                    report.Add(tokens[0]);
+                }
             }
 
             // check order of fields and operations
@@ -1808,18 +1835,23 @@ namespace KineticValidator
                     {
                         if (javaStyleOnly.Contains(previousT.Value + currentT.Value))
                         {
-                            return ExpressionErrorCode.IncorrectOperator;
+                            currentT.ErrorCode = ExpressionErrorCode.IncorrectOperator;
+                            report.Add(currentT);
                         }
-                        return ExpressionErrorCode.MissingValueField;
-                    }
 
-                    if (!sqlType && currentT.Value != "!")
+                        currentT.ErrorCode = ExpressionErrorCode.MissingValueField;
+                        report.Add(currentT);
+                    }
+                    else if (currentT.Value != "!")
                     {
                         if (sqlStyleOnly.Contains(previousT.Value + currentT.Value))
                         {
-                            return ExpressionErrorCode.IncorrectOperator;
+                            currentT.ErrorCode = ExpressionErrorCode.IncorrectOperator;
+                            report.Add(currentT);
                         }
-                        return ExpressionErrorCode.MissingValueField;
+
+                        currentT.ErrorCode = ExpressionErrorCode.MissingValueField;
+                        report.Add(currentT);
                     }
                 }
 
@@ -1828,7 +1860,10 @@ namespace KineticValidator
                     && (previousT.Type == TokenType.TextField || previousT.Type == TokenType.ValueField))
                 {
                     if (!sqlType && currentT.Value[0] != '.')
-                        return ExpressionErrorCode.MissingOperator;
+                    {
+                        currentT.ErrorCode = ExpressionErrorCode.MissingOperator;
+                        report.Add(currentT);
+                    }
                 }
 
                 // no field can come after closing bracket
@@ -1836,7 +1871,10 @@ namespace KineticValidator
                     (currentT.Type == TokenType.TextField || currentT.Type == TokenType.ValueField))
                 {
                     if (!sqlType && currentT.Value[0] != '.')
-                        return ExpressionErrorCode.MissingOperator;
+                    {
+                        currentT.ErrorCode = ExpressionErrorCode.MissingOperator;
+                        report.Add(currentT);
+                    }
                 }
 
                 // no field can come before opening bracket
@@ -1844,14 +1882,20 @@ namespace KineticValidator
                     currentT.Type == TokenType.BracketOpen)
                 {
                     if (!sqlType && !previousT.Value.Contains('.'))
-                        return ExpressionErrorCode.MissingOperator;
+                    {
+                        currentT.ErrorCode = ExpressionErrorCode.MissingOperator;
+                        report.Add(currentT);
+                    }
                 }
             }
 
             // all brackets should be closed - not really needed because of the next validation
             if (tokens.Count(n => n.Type == TokenType.BracketOpen) !=
                 tokens.Count(n => n.Type == TokenType.BracketClose))
-                return ExpressionErrorCode.InconsistentBrackets;
+            {
+                tokens[0].ErrorCode = ExpressionErrorCode.InconsistentBrackets;
+                report.Add(tokens[0]);
+            }
 
             // brackets order must be followed
             var counter = 0;
@@ -1863,7 +1907,10 @@ namespace KineticValidator
                     counter--;
 
                 if (counter < 0)
-                    return ExpressionErrorCode.InconsistentBrackets;
+                {
+                    tokens[0].ErrorCode = ExpressionErrorCode.InconsistentBrackets;
+                    report.Add(tokens[0]);
+                }
             }
 
             // both fields around the operator should be of same type (string/non-string)
@@ -1879,16 +1926,19 @@ namespace KineticValidator
                         && (nextT.Type == TokenType.TextField || nextT.Type == TokenType.ValueField))
                     {
                         if (previousT.Type != nextT.Type)
-                            return ExpressionErrorCode.InconsistentValueFields;
+                        {
+                            currentT.ErrorCode = ExpressionErrorCode.InconsistentValueFields;
+                            report.Add(currentT);
+                        }
                     }
                 }
             }
 
             // check dataFields existence
-            foreach (var token in tokens.Where(n => n.Type == TokenType.ValueField && !IsNumeric(n.Value)).Select(n => n.Value))
+            foreach (var token in tokens.Where(n => n.Type == TokenType.ValueField && !IsNumeric(n.Value)))
             {
                 var systemKeyWords = new[] { "true", "false" };
-                if (systemKeyWords.Contains(token.ToLower()))
+                if (systemKeyWords.Contains(token.Value.ToLower()))
                 {
                     continue;
                 }
@@ -1896,65 +1946,72 @@ namespace KineticValidator
                 if (!sqlType)
                 {
 
-                    if (token.Contains("%"))
+                    if (token.Value.Contains("%"))
                     {
-                        if (token.Contains('.'))
+                        if (token.Value.Contains('.'))
                         {
                             var systemMacro = new[] { "count%", "hasrow%", "row%", "haschanges%" };
-                            var dv = token.Split('.');
+                            var dv = token.Value.Split('.');
                             if (!systemMacro.Contains(dv[1].ToLower()))
                             {
-                                return ExpressionErrorCode.KeyWordNotExists;
+                                token.ErrorCode = ExpressionErrorCode.KeyWordNotExists;
+                                report.Add(token);
                             }
 
-                            if (!DataViewExists(token.Trim('%')))
+                            if (!DataViewExists(token.Value.Trim('%')))
                             {
-                                return ExpressionErrorCode.DataViewNotExists;
+                                token.ErrorCode = ExpressionErrorCode.DataViewNotExists;
+                                report.Add(token);
                             }
                         }
                     }
-                    else if (token.Contains('.'))
+                    else if (token.Value.Contains('.'))
                     {
-                        if (token.ToLower().StartsWith("context."))
+                        if (token.Value.ToLower().StartsWith("context."))
                         {
                             continue;
                         }
 
-                        if (!token.StartsWith("{") || !token.EndsWith("}"))
+                        if (!token.Value.StartsWith("{") || !token.Value.EndsWith("}"))
                         {
-                            return ExpressionErrorCode.MissingFieldEmbracement;
+                            token.ErrorCode = ExpressionErrorCode.MissingFieldEmbracement;
+                            report.Add(token);
                         }
 
-                        if (!DataFieldExists(token))
+                        if (!DataFieldExists(token.Value))
                         {
-                            return ExpressionErrorCode.FieldNotExists;
+                            token.ErrorCode = ExpressionErrorCode.FieldNotExists;
+                            report.Add(token);
                         }
                     }
-                    else if (!DataViewExists(token))
+                    else if (!DataViewExists(token.Value))
                     {
-                        return ExpressionErrorCode.FieldNotExists;
+                        token.ErrorCode = ExpressionErrorCode.FieldNotExists;
+                        report.Add(token);
                     }
                 }
                 else
                 {
-                    if (token.ToLower() == "undefined")
+                    if (token.Value.ToLower() == "undefined")
                     {
                         continue;
                     }
 
-                    var sqlToken = token.Replace("[", "").Replace("]", "");
+                    var sqlToken = token.Value.Replace("[", "").Replace("]", "");
                     if (sqlToken.Contains(".$"))
                     {
                         var sqlKeyWords = new[] { "$rowcount" };
                         var dv = sqlToken.Split('.');
                         if (!sqlKeyWords.Contains(dv[1].ToLower()))
                         {
-                            return ExpressionErrorCode.KeyWordNotExists;
+                            token.ErrorCode = ExpressionErrorCode.KeyWordNotExists;
+                            report.Add(token);
                         }
 
                         if (!DataViewExists(dv[0]))
                         {
-                            return ExpressionErrorCode.DataViewNotExists;
+                            token.ErrorCode = ExpressionErrorCode.DataViewNotExists;
+                            report.Add(token);
                         }
                     }
                     else if (sqlToken.Contains("%"))
@@ -1965,25 +2022,28 @@ namespace KineticValidator
                     {
                         if (sqlToken.StartsWith("{") || sqlToken.EndsWith("}"))
                         {
-                            return ExpressionErrorCode.OddFieldEmbracement;
+                            token.ErrorCode = ExpressionErrorCode.OddFieldEmbracement;
+                            report.Add(token);
                         }
 
                         if (!DataFieldExists(sqlToken))
                         {
-                            return ExpressionErrorCode.FieldNotExists;
+                            token.ErrorCode = ExpressionErrorCode.FieldNotExists;
+                            report.Add(token);
                         }
                     }
                     else if (!string.IsNullOrEmpty(dataView))
                     {
                         if (!DataFieldExists(dataView + "." + sqlToken))
                         {
-                            return ExpressionErrorCode.FieldNotExists;
+                            token.ErrorCode = ExpressionErrorCode.FieldNotExists;
+                            report.Add(token);
                         }
                     }
                 }
             }
 
-            return ExpressionErrorCode.NoProblem;
+            return report;
         }
 
         #endregion
@@ -3042,7 +3102,9 @@ namespace KineticValidator
             var eventCallList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == KineticContentType.Events
+                    &&
+                    (
+                    (n.FileType == KineticContentType.Events
                     && (n.Name == "value"
                         && _jsonPropertiesCollection
                             .Any(m =>
@@ -3052,7 +3114,12 @@ namespace KineticValidator
                                 && m.ParentPath == n.ParentPath
                                 && m.Name == "type"
                                 && m.PatchedValue == "event-next")
-                        || n.Name == "iterativeEvent")
+                        || n.Name == "iterativeEvent"))
+
+
+                        || (n.FileType == KineticContentType.DataViews
+                        && n.Name == "eventID")
+                        )
                     && !string.IsNullOrEmpty(n.PatchedValue)
                     && n.PatchedValue.IndexOfAny(new[] { '%', '{', '}' }) < 0)
                 .ToArray();
@@ -3102,15 +3169,24 @@ namespace KineticValidator
             var eventCallList = _jsonPropertiesCollection
                 .Where(n =>
                     n.ItemType == JsonItemType.Property
-                    && n.FileType == KineticContentType.Events
+                    &&
+                    (
+                    (n.FileType == KineticContentType.Events
                     && (n.Name == "value"
                         && _jsonPropertiesCollection
                             .Any(m =>
-                                m.FullFileName == n.FullFileName
+                                m.ItemType == JsonItemType.Property
+                                && m.FileType == KineticContentType.Events
+                                && m.FullFileName == n.FullFileName
                                 && m.ParentPath == n.ParentPath
                                 && m.Name == "type"
                                 && m.PatchedValue == "event-next")
-                        || n.Name == "iterativeEvent")
+                        || n.Name == "iterativeEvent"))
+
+
+                        || (n.FileType == KineticContentType.DataViews
+                        && n.Name == "eventID")
+                        )
                     && !string.IsNullOrEmpty(n.PatchedValue)
                     && n.PatchedValue.IndexOfAny(new[] { '%', '{', '}' }) < 0)
                 .ToArray();
@@ -3446,27 +3522,27 @@ namespace KineticValidator
                     usedDataTable = property.PatchedValue;
                 }
 
-                if (string.IsNullOrEmpty(usedDataTable))
-                    continue;
-
-                if (!usedDataTable.StartsWith("%")
-                    && !dataTableList.Contains(usedDataTable))
+                if (string.IsNullOrEmpty(usedDataTable)
+                    || usedDataTable.IndexOfAny(new char[] { '{', '}', '%' }) >= 0
+                    || dataTableList.Contains(usedDataTable))
                 {
-                    var reportItem = new ReportItem
-                    {
-                        ProjectName = _projectName,
-                        FullFileName = property.FullFileName,
-                        FileType = property.FileType.ToString(),
-                        LineId = property.LineId.ToString(),
-                        JsonPath = property.JsonPath,
-                        LineNumber = property.SourceLineNumber.ToString(),
-                        Message = $"DataTable \"{usedDataTable}\" is not defined in the project",
-                        ValidationType = ValidationTypeEnum.Logic.ToString(),
-                        Severity = ImportanceEnum.Error.ToString(),
-                        Source = methodName
-                    };
-                    report.Add(reportItem);
+                    continue;
                 }
+
+                var reportItem = new ReportItem
+                {
+                    ProjectName = _projectName,
+                    FullFileName = property.FullFileName,
+                    FileType = property.FileType.ToString(),
+                    LineId = property.LineId.ToString(),
+                    JsonPath = property.JsonPath,
+                    LineNumber = property.SourceLineNumber.ToString(),
+                    Message = $"DataTable \"{usedDataTable}\" is not defined in the project",
+                    ValidationType = ValidationTypeEnum.Logic.ToString(),
+                    Severity = ImportanceEnum.Error.ToString(),
+                    Source = methodName
+                };
+                report.Add(reportItem);
             }
 
 #if DEBUG
@@ -4520,14 +4596,26 @@ namespace KineticValidator
                 report.AddRange(CollectDataViewInfo(methodName));
             }
 
-            report.AddRange(expressionList
+            var reportItems = expressionList
                 .Select(expression => new { expression, result = IsExpressionValid(expression.PatchedValue) })
-                .Where(n => n.result != ExpressionErrorCode.NoProblem)
-                .Select(n => new ReportItem
+                .Where(n => n.result.All(m => m.ErrorCode != ExpressionErrorCode.NoProblem));
+
+            foreach (var n in reportItems)
+            {
+                if (!n.result.Any())
+                    continue;
+
+                var errorList = new StringBuilder();
+                foreach (var item in n.result)
+                {
+                    errorList.AppendLine(item.GetErrorsDescription());
+                }
+
+                var newReport = new ReportItem
                 {
                     ProjectName = _projectName,
                     FullFileName = n.expression.FullFileName,
-                    Message = $"Incorrect expression [{n.result}]: \"{n.expression.PatchedValue}\"",
+                    Message = $"Incorrect expression: \"{n.expression.PatchedValue}\"{Environment.NewLine}{errorList}",
                     FileType = n.expression.FileType.ToString(),
                     LineId = n.expression.LineId.ToString(),
                     JsonPath = n.expression.JsonPath,
@@ -4535,7 +4623,10 @@ namespace KineticValidator
                     ValidationType = ValidationTypeEnum.Logic.ToString(),
                     Severity = ImportanceEnum.Error.ToString(),
                     Source = methodName
-                }));
+                };
+
+                report.Add(newReport);
+            }
 
 #if DEBUG
             Console.WriteLine($"{methodName} execution: {DateTime.Now.Subtract(startTime).TotalSeconds} sec.");
@@ -4574,13 +4665,19 @@ namespace KineticValidator
                     && n.JsonPath == condition.ParentPath + ".dataView").PatchedValue;
 
                 var r = IsExpressionValid(condition.PatchedValue, true, dvName);
-                if (r != ExpressionErrorCode.NoProblem)
+                if (r.Count() > 0)
                 {
+                    var errorList = new StringBuilder();
+                    foreach (var item in r)
+                    {
+                        errorList.AppendLine(item.GetErrorsDescription());
+                    }
+
                     var newReport = new ReportItem
                     {
                         ProjectName = _projectName,
                         FullFileName = condition.FullFileName,
-                        Message = $"Incorrect condition [{r}]: \"{condition.PatchedValue}\"",
+                        Message = $"Incorrect condition: \"{condition.PatchedValue}\"{Environment.NewLine}{errorList}",
                         FileType = condition.FileType.ToString(),
                         LineId = condition.LineId.ToString(),
                         JsonPath = condition.JsonPath,
