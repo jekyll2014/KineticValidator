@@ -1,11 +1,16 @@
 [
   {
-    "FileType": "",
+    "ProjectName": "",
     "FullFileName": "",
-    "Importance": "",
-    "JsonPath": "",
-    "LineId": "",
+    "FileType": "",
     "Message": "DataView \"SysPages\" is not defined in the project",
-    "ValidationType": ""
+    "LineId": "",
+    "LineNumber": "",
+    "StartPosition": "",
+    "EndPosition": "",
+    "JsonPath": "",
+    "ValidationType": "",
+    "Severity": "",
+    "Source": ""
   }
 ]
