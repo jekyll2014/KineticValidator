@@ -31,9 +31,11 @@ namespace KineticValidator
         {
             this.components = new System.ComponentModel.Container();
             System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle1 = new System.Windows.Forms.DataGridViewCellStyle();
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MainForm));
             this.tabControl1 = new System.Windows.Forms.TabControl();
             this.tabPage_DataCollection = new System.Windows.Forms.TabPage();
             this.splitContainer1 = new System.Windows.Forms.SplitContainer();
+            this.checkBox_applyPatches = new System.Windows.Forms.CheckBox();
             this.checkBox_vsCode = new System.Windows.Forms.CheckBox();
             this.checkBox_saveReport = new System.Windows.Forms.CheckBox();
             this.checkBox_saveFiles = new System.Windows.Forms.CheckBox();
@@ -54,7 +56,6 @@ namespace KineticValidator
             this.removeThisErrorToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.alwaysIgnoreThisErrorToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.folderBrowserDialog1 = new System.Windows.Forms.FolderBrowserDialog();
-            this.checkBox_applyPatches = new System.Windows.Forms.CheckBox();
             this.tabControl1.SuspendLayout();
             this.tabPage_DataCollection.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer1)).BeginInit();
@@ -117,6 +118,17 @@ namespace KineticValidator
             this.splitContainer1.Size = new System.Drawing.Size(786, 418);
             this.splitContainer1.SplitterDistance = 244;
             this.splitContainer1.TabIndex = 1;
+            // 
+            // checkBox_applyPatches
+            // 
+            this.checkBox_applyPatches.AutoSize = true;
+            this.checkBox_applyPatches.Location = new System.Drawing.Point(0, 304);
+            this.checkBox_applyPatches.Name = "checkBox_applyPatches";
+            this.checkBox_applyPatches.Size = new System.Drawing.Size(93, 17);
+            this.checkBox_applyPatches.TabIndex = 8;
+            this.checkBox_applyPatches.Text = "Apply patches";
+            this.checkBox_applyPatches.UseVisualStyleBackColor = true;
+            this.checkBox_applyPatches.CheckedChanged += new System.EventHandler(this.CheckBox_applyPatches_CheckedChanged);
             // 
             // checkBox_vsCode
             // 
@@ -334,23 +346,13 @@ namespace KineticValidator
             this.alwaysIgnoreThisErrorToolStripMenuItem.Text = "Always ignore this error";
             this.alwaysIgnoreThisErrorToolStripMenuItem.Click += new System.EventHandler(this.AlwaysIgnoreThisErrorToolStripMenuItem_Click);
             // 
-            // checkBox_applyPatches
-            // 
-            this.checkBox_applyPatches.AutoSize = true;
-            this.checkBox_applyPatches.Location = new System.Drawing.Point(0, 304);
-            this.checkBox_applyPatches.Name = "checkBox_applyPatches";
-            this.checkBox_applyPatches.Size = new System.Drawing.Size(93, 17);
-            this.checkBox_applyPatches.TabIndex = 8;
-            this.checkBox_applyPatches.Text = "Apply patches";
-            this.checkBox_applyPatches.UseVisualStyleBackColor = true;
-            this.checkBox_applyPatches.CheckedChanged += new System.EventHandler(this.CheckBox_applyPatches_CheckedChanged);
-            // 
             // MainForm
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(800, 450);
             this.Controls.Add(this.tabControl1);
+            this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Name = "MainForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.Manual;
             this.Text = "Form1";
