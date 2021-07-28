@@ -747,7 +747,8 @@ namespace KineticValidator
 
             // run every validator selected
             var reportsCollection = new BlockingCollection<ReportItem>();
-            Parallel.ForEach(_validatorsList, validator =>
+            //Parallel.ForEach(_validatorsList, validator =>
+            foreach (var validator in _validatorsList)
             {
                 var validatorMethod = validator.Value.Method.Name;
                 if (_checkedValidators.Contains(validatorMethod))
@@ -756,7 +757,8 @@ namespace KineticValidator
                     foreach (var item in report)
                         reportsCollection.Add(item);
                 }
-            });
+            }
+            //});
 
             _textLog.AppendLine(
                 $"Files validated: {processedFilesList.Count}, issues found: {reportsCollection.Count}");
