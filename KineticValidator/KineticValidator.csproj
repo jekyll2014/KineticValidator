@@ -149,7 +149,6 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
     </Compile>
     <Content Include="jv.ico" />
-    <None Include="Resources\icon.bmp" />
     <Content Include="update_dlls.bat">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
@@ -183,6 +182,9 @@
       <Project>{d2ed8500-aadc-487b-97d4-408d46de449c}</Project>
       <Name>JsonPathParserLib</Name>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Resources\" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
