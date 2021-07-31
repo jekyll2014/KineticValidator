@@ -2258,7 +2258,7 @@ namespace KineticValidator
                 var propertyList = GetParsedFile(file.Key);
 
                 var duplicateIdList = propertyList.Where(n =>
-                        n.PropertyType == PropertyType.Property)
+                        n.JsonPropertyType == JsonPropertyTypes.Property)
                     .GroupBy(n => n.Path)
                     .Where(n => n.Count() > 1)
                     .ToArray();
