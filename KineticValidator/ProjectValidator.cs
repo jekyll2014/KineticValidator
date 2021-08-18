@@ -1233,7 +1233,7 @@ namespace KineticValidator
                             n.ItemType == JsonItemType.Property
                             && n.FileType == KineticContentType.DataViews
                             && n.FullFileName == originalDataViewName.FullFileName
-                            && n.JsonPath == originalDataViewName.JsonPath.Replace(".id", ".additionalColumns")
+                            && n.JsonPath.StartsWith(originalDataViewName.JsonPath.Replace(".id", ".additionalColumns"))
                             && !string.IsNullOrEmpty(n.PatchedValue))?
                         .Select(n => n.PatchedValue)?
                         .ToList();

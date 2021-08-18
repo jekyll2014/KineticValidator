@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 namespace JsonPathParserLib
 {
@@ -401,11 +402,11 @@ namespace JsonPathParserLib
                     if (_jsonText[pos] == ',' || _jsonText[pos] == ']') // it's an array of values
                     {
                         pos--;
-                        newElement.Value = newName;
                         newElement.JsonPropertyType = JsonPropertyTypes.ArrayValue;
                         newElement.EndPosition = pos;
                         newElement.Path = currentPath;
                         newElement.ValueType = GetVariableType(newName);
+                        newElement.Value = newElement.ValueType == JsonValueTypes.String ? newName.Trim('\"') : newName;
                         return pos;
                     }
 
@@ -925,6 +926,49 @@ namespace JsonPathParserLib
                 startIndex++;
             }
             return count;
+        }
+
+        public IEnumerable<ParsedProperty> ConvertForTreeProcessing(IEnumerable<ParsedProperty> schemaProperties)
+        {
+            var result = new List<ParsedProperty>();
+            var tmpStr = new StringBuilder();
+
+            foreach (var property in schemaProperties)
+            {
+                var path = property.Path;
+                tmpStr.Append(path);
+                var pos = path.IndexOf('[');
+                while (pos >= 0)
+                {
+                    tmpStr.Insert(pos, JsonPathDivider);
+                    pos = path.IndexOf('[', pos + 1);
+                }
+
+                path = tmpStr.ToString();
+
+                var name = property.Name;
+                if (string.IsNullOrEmpty(name) && path[path.Length - 1] == ']')
+                {
+                    pos = path.LastIndexOf('[');
+                    if (pos >= 0)
+                        name = path.Substring(pos);
+                }
+
+                var newProperty = new ParsedProperty
+                {
+                    Name = name,
+                    Path = path,
+                    JsonPropertyType = property.JsonPropertyType,
+                    EndPosition = property.EndPosition,
+                    StartPosition = property.StartPosition,
+                    Value = property.Value,
+                    ValueType = property.ValueType,
+                };
+                result.Add(newProperty);
+                tmpStr.Clear();
+            }
+
+            return result;
         }
     }
 }

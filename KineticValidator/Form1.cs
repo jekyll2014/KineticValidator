@@ -1150,16 +1150,45 @@ namespace KineticValidator
 
                     break;
                 }
+                case JValue jValue:
+                {
+                    if (jValue.Type != JTokenType.Comment)
+                    {
+                        var jsonPath = jValue.Path;
+                        var name = "";
+                        var lineNumber = ((IJsonLineInfo)jValue).LineNumber;
+                        var propValue = jValue.Value?.ToString();
+
+                        var newProperty = new JsonProperty
+                        {
+                            Value = propValue ?? "",
+                            FileType = fileType,
+                            FullFileName = fullFileName,
+                            JsonPath = jsonPath,
+                            JsonDepth = jsonDepth,
+                            Name = name,
+                            Version = version,
+                            ItemType = JsonItemType.Property,
+                            Parent = parent,
+                            Shared = shared,
+                            SourceLineNumber = lineNumber
+                        };
+                        rootCollection.Add(newProperty);
+                    }
+
+                    break;
+                }
+
                 default:
                 {
-                    if (token.Children().Any())
+                    //if (token.Children().Any())
                     {
                         var report = new ReportItem
                         {
                             ProjectName = _projectName,
                             FullFileName = fullFileName,
                             JsonPath = token.Path,
-                            Message = "Unknown node skipped by parser: " + token,
+                            Message = "Unknown node skipped by parser: " + token + "; Type: " + token.GetType(),
                             ValidationType = ValidationTypeEnum.Parse.ToString(),
                             Severity = ImportanceEnum.Error.ToString(),
                             Source = "ParseJsonObject"
