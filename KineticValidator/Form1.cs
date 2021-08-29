@@ -1652,7 +1652,6 @@ namespace KineticValidator
 
                 var execParams = "-r -g " + fileName + ":" + lineNumber;
                 VsCodeOpenFile(execParams);
-
                 return;
             }
 
@@ -1662,8 +1661,8 @@ namespace KineticValidator
                 textEditor = null;
             }
 
-            bool fileLoaded;
-            bool newWindow = false;
+            var fileLoaded = false;
+            var newWindow = false;
             if (textEditor != null && !textEditor.IsDisposed)
             {
                 if (textEditor.SingleLineBrackets != _reformatJson || textEditor.Text != PreViewCaption + fileName)
@@ -1684,7 +1683,7 @@ namespace KineticValidator
                     textEditor.Dispose();
                 }
 
-                textEditor = new JsonViewer("", "", standAloneEditor)
+                textEditor = new JsonViewer("", "", true)
                 {
                     SingleLineBrackets = _reformatJson
                 };
@@ -1693,7 +1692,6 @@ namespace KineticValidator
             }
 
             _editors[editorNumber] = textEditor;
-
             textEditor.AlwaysOnTop = _alwaysOnTop;
             textEditor.Show();
 
@@ -1716,7 +1714,10 @@ namespace KineticValidator
             }
 
             if (!fileLoaded)
+            {
+                textEditor.Text = "Failed to load " + fileName;
                 return;
+            }
 
             if (!standAloneEditor)
             {
