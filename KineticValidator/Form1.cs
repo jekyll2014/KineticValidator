@@ -1691,7 +1691,7 @@ namespace KineticValidator
                 fileLoaded = textEditor.LoadJsonFromFile(fileName);
             }
 
-            _editors[editorNumber] = textEditor;
+            if (!standAloneEditor) _editors[editorNumber] = textEditor;
             textEditor.AlwaysOnTop = _alwaysOnTop;
             textEditor.Show();
 
