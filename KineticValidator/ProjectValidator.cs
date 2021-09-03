@@ -1400,7 +1400,7 @@ namespace KineticValidator
                     .Where(n =>
                         n.ItemType == JsonItemType.Property
                         && n.FileType == KineticContentType.Events
-                        && !n.Shared
+                        //&& !n.Shared
                         && n.Name == "type"
                         && n.PatchedValue == "row-update")
                     .ToArray();
@@ -1421,7 +1421,7 @@ namespace KineticValidator
                     .Where(n =>
                         n.ItemType == JsonItemType.Property
                         && n.FileType == KineticContentType.Events
-                        && !n.Shared
+                        //&& !n.Shared
                         && n.Name == "type"
                         && n.PatchedValue == "search-value-set")
                     .ToArray();
@@ -2501,8 +2501,9 @@ namespace KineticValidator
                                             && n.ParentPath == patchDup[i].ParentPath
                                             && n.Name == "value");
 
-                    if (newValue == null || string.IsNullOrEmpty(oldValue.Value) ||
-                        oldValue.Value == newValue.Value)
+                    if (newValue == null
+                        || string.IsNullOrEmpty(oldValue.Value))
+                        //|| oldValue.Value == newValue.Value)
                         continue;
 
                     var reportItem = new ReportItem
