@@ -378,7 +378,7 @@ namespace KineticValidator
             }
 
             // do not process 'Shared' on deployment folder processing
-            var sharedDir = dirList.Where(n => n.EndsWith("\\Shared")).ToArray();
+            var sharedDir = dirList.Where(n => n.EndsWith("\\Shared", StringComparison.OrdinalIgnoreCase)).ToArray();
             if (sharedDir.Any())
                 dirList.Remove(sharedDir.First());
 
@@ -1766,7 +1766,7 @@ namespace KineticValidator
 
             //Project is in the \"\\Deployment\\Server\\Apps\\MetaUI\\\" folder
             if (Directory.Exists(projectPath + "\\..\\shared\\")
-                && projectPath.Contains("\\Deployment\\Server\\Apps\\"))
+                && projectPath.ToLower().Contains("\\deployment\\server\\apps\\"))
             {
                 folderType = FolderType.Deployment;
             }
@@ -1777,7 +1777,7 @@ namespace KineticValidator
             }
             //Project is in the \"\\MetaUI\\ICE\\\" folder
             else if (Directory.Exists(projectPath + "\\..\\..\\..\\shared\\")
-                     && Utilities.GetShortFileName(projectPath).StartsWith("Ice"))
+                     && Utilities.GetShortFileName(projectPath).StartsWith("Ice", StringComparison.OrdinalIgnoreCase))
             {
                 folderType = FolderType.IceRepository;
             }
