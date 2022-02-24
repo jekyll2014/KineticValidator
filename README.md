@@ -11,5 +11,6 @@ Exaples:
 3) Looking for entity override (entities with the same name declared in different places).
 4) Looking for redundant entities (to be removed or not used due to naming errors)
 5) Missing forms (incorrect names?)
+6) Create a data-model of the application (list of view/tables including fields, all fields references in the code) and validate it against data-model described in the server contracts).
 
-There are totally 48 cases to be detected. All cases are the result of my own and tech. support group experience.
+There are totally 47 cases to be detected. All cases are the result of my own and tech. support group experience.
